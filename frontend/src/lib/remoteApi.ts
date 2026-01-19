@@ -1,7 +1,7 @@
 import { oauthApi, ApiError } from './api';
 import { UserData, AssigneesQuery } from 'shared/types';
 
-export const REMOTE_API_URL = import.meta.env.VITE_VK_SHARED_API_BASE || '';
+export const REMOTE_API_URL = import.meta.env.VITE_CREW_SHARED_API_BASE || '';
 
 const makeRequest = async (path: string, options: RequestInit = {}) => {
   const tokenRes = await oauthApi.getToken();

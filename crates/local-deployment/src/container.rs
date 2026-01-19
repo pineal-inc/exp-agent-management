@@ -1077,7 +1077,7 @@ impl ContainerService for LocalContainerService {
                 _ => Arc::new(NoopExecutorApprovalService {}),
             };
 
-        // Build ExecutionEnv with VK_* variables
+        // Build ExecutionEnv with CREW_* variables
         let mut env = ExecutionEnv::new();
 
         // Load task and project context for environment variables
@@ -1092,11 +1092,11 @@ impl ContainerService for LocalContainerService {
             .await?
             .ok_or(ContainerError::Other(anyhow!("Project not found for task")))?;
 
-        env.insert("VK_PROJECT_NAME", &project.name);
-        env.insert("VK_PROJECT_ID", project.id.to_string());
-        env.insert("VK_TASK_ID", task.id.to_string());
-        env.insert("VK_WORKSPACE_ID", workspace.id.to_string());
-        env.insert("VK_WORKSPACE_BRANCH", &workspace.branch);
+        env.insert("CREW_PROJECT_NAME", &project.name);
+        env.insert("CREW_PROJECT_ID", project.id.to_string());
+        env.insert("CREW_TASK_ID", task.id.to_string());
+        env.insert("CREW_WORKSPACE_ID", workspace.id.to_string());
+        env.insert("CREW_WORKSPACE_BRANCH", &workspace.branch);
 
         // Create the child and stream, add to execution tracker with timeout
         let mut spawned = tokio::time::timeout(

@@ -9,8 +9,8 @@ fn main() {
     if let Ok(api_endpoint) = std::env::var("POSTHOG_API_ENDPOINT") {
         println!("cargo:rustc-env=POSTHOG_API_ENDPOINT={}", api_endpoint);
     }
-    if let Ok(vk_shared_api_base) = std::env::var("VK_SHARED_API_BASE") {
-        println!("cargo:rustc-env=VK_SHARED_API_BASE={}", vk_shared_api_base);
+    if let Ok(crew_shared_api_base) = std::env::var("CREW_SHARED_API_BASE") {
+        println!("cargo:rustc-env=CREW_SHARED_API_BASE={}", crew_shared_api_base);
     }
 
     // Create frontend/dist directory if it doesn't exist

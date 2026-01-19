@@ -287,7 +287,7 @@ fn branches_match(target: &str, session_branch: &str) -> bool {
         return true;
     }
 
-    // Check if the slug portions match (e.g., "feature-auth" matches "vk/feature-auth")
+    // Check if the slug portions match (e.g., "feature-auth" matches "crew/feature-auth")
     let target_slug = extract_branch_slug(&target_normalized);
     let session_slug = extract_branch_slug(&session_normalized);
 
@@ -302,7 +302,7 @@ fn normalize_branch(branch: &str) -> String {
 }
 
 /// Extract the "slug" portion of a branch name
-/// e.g., "vk/a04a-store-payloads-i" -> "a04a-store-payloads-i"
+/// e.g., "crew/a04a-store-payloads-i" -> "a04a-store-payloads-i"
 fn extract_branch_slug(branch: &str) -> String {
     // Split by '/' and take the last part
     branch.rsplit('/').next().unwrap_or(branch).to_string()
@@ -470,13 +470,13 @@ mod tests {
         assert!(branches_match("feature-auth", "feature-auth"));
 
         // With prefix
-        assert!(branches_match("feature-auth", "vk/feature-auth"));
-        assert!(branches_match("vk/feature-auth", "feature-auth"));
+        assert!(branches_match("feature-auth", "crew/feature-auth"));
+        assert!(branches_match("crew/feature-auth", "feature-auth"));
 
         // Slug matching
         assert!(branches_match(
             "a04a-store-payloads-i",
-            "vk/a04a-store-payloads-i"
+            "crew/a04a-store-payloads-i"
         ));
 
         // Case insensitive
@@ -488,8 +488,8 @@ mod tests {
 
         // Regression tests: substring matches should NOT match
         // (these were incorrectly matching before the fix)
-        assert!(!branches_match("vk/d13f-remove-compare-c", "c"));
-        assert!(!branches_match("vk/d13f-remove-compare-c", "compare"));
+        assert!(!branches_match("crew/d13f-remove-compare-c", "c"));
+        assert!(!branches_match("crew/d13f-remove-compare-c", "compare"));
         assert!(!branches_match("feature-auth", "auth"));
         assert!(!branches_match("feature-auth", "feature"));
     }
@@ -498,12 +498,12 @@ mod tests {
     fn test_normalize_branch() {
         assert_eq!(normalize_branch("refs/heads/main"), "main");
         assert_eq!(normalize_branch("Feature-Auth"), "feature-auth");
-        assert_eq!(normalize_branch("vk/feature-auth"), "vk/feature-auth");
+        assert_eq!(normalize_branch("crew/feature-auth"), "crew/feature-auth");
     }
 
     #[test]
     fn test_extract_branch_slug() {
-        assert_eq!(extract_branch_slug("vk/feature-auth"), "feature-auth");
+        assert_eq!(extract_branch_slug("crew/feature-auth"), "feature-auth");
         assert_eq!(extract_branch_slug("feature-auth"), "feature-auth");
         assert_eq!(
             extract_branch_slug("user/prefix/feature-auth"),
