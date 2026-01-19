@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useProject } from '@/contexts/ProjectContext';
 import { useTaskAttemptsWithSessions } from '@/hooks/useTaskAttempts';
@@ -13,12 +13,15 @@ import type { TaskWithAttemptStatus } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { NewCardContent } from '../ui/new-card';
 import { Button } from '../ui/button';
-import { PlusIcon, ExternalLink, ChevronDown, ChevronRight, Play, Archive } from 'lucide-react';
+import { PlusIcon, ExternalLink, ChevronDown, ChevronRight, Play, Archive, Send, Clock } from 'lucide-react';
 import { CreateAttemptDialog } from '@/components/dialogs/tasks/CreateAttemptDialog';
 import WYSIWYGEditor from '@/components/ui/wysiwyg';
 import { DataTable, type ColumnDef } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useAttemptExecution } from '@/hooks/useAttemptExecution';
+import { useSessionQueueInteraction } from '@/hooks/useSessionQueueInteraction';
+import { sessionsApi } from '@/lib/api';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface TaskPanelProps {
   task: TaskWithAttemptStatus | null;
@@ -106,6 +109,83 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
     (a, b) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
+
+  // Get latest attempt for follow-up
+  const latestAttempt = displayedAttempts[0] || null;
+  const latestSessionId = latestAttempt?.session?.id;
+  const latestWorkspaceId = latestAttempt?.id;
+
+  // Check if latest attempt is running
+  const { isAttemptRunning } = useAttemptExecution(latestWorkspaceId, task?.id);
+
+  // Queue interaction for latest session
+  const {
+    isQueued,
+    queuedMessage,
+    isQueueLoading,
+    queueMessage,
+    cancelQueue,
+  } = useSessionQueueInteraction({
+    sessionId: latestSessionId,
+  });
+
+  // Local state for follow-up message
+  const [followUpMessage, setFollowUpMessage] = useState('');
+  const [isSendingFollowUp, setIsSendingFollowUp] = useState(false);
+  const [followUpError, setFollowUpError] = useState<string | null>(null);
+
+  // Handle sending follow-up message
+  const handleSendFollowUp = useCallback(async () => {
+    if (!latestSessionId || !followUpMessage.trim()) return;
+
+    if (isAttemptRunning) {
+      // Queue message if running
+      try {
+        await queueMessage(followUpMessage.trim(), null);
+        setFollowUpMessage('');
+        setFollowUpError(null);
+      } catch (error) {
+        const err = error as { message?: string };
+        setFollowUpError(
+          `キューへの追加に失敗しました: ${err.message ?? 'Unknown error'}`
+        );
+      }
+    } else {
+      // Send directly if not running
+      try {
+        setIsSendingFollowUp(true);
+        setFollowUpError(null);
+        await sessionsApi.followUp(latestSessionId, {
+          prompt: followUpMessage.trim(),
+          variant: null,
+          retry_process_id: null,
+          force_when_dirty: null,
+          perform_git_reset: null,
+        });
+        setFollowUpMessage('');
+      } catch (error) {
+        const err = error as { message?: string };
+        setFollowUpError(
+          `追加指示の送信に失敗しました: ${err.message ?? 'Unknown error'}`
+        );
+      } finally {
+        setIsSendingFollowUp(false);
+      }
+    }
+  }, [latestSessionId, followUpMessage, isAttemptRunning, queueMessage]);
+
+  // Handle cancel queue
+  const handleCancelQueue = useCallback(async () => {
+    try {
+      await cancelQueue();
+      setFollowUpError(null);
+    } catch (error) {
+      const err = error as { message?: string };
+      setFollowUpError(
+        `キューのキャンセルに失敗しました: ${err.message ?? 'Unknown error'}`
+      );
+    }
+  }, [cancelQueue]);
 
   if (!task) {
     return (
@@ -364,39 +444,117 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
                 </Button>
               </div>
             ) : (
-              <DataTable
-                data={displayedAttempts}
-                columns={attemptColumns}
-                keyExtractor={(attempt) => attempt.id}
-                onRowClick={(attempt) => {
-                  if (config?.beta_workspaces) {
-                    navigate(`/workspaces/${attempt.id}`);
-                  } else if (projectId && task.id) {
-                    navigate(paths.attempt(projectId, task.id, attempt.id));
+              <div className="space-y-4">
+                <DataTable
+                  data={displayedAttempts}
+                  columns={attemptColumns}
+                  keyExtractor={(attempt) => attempt.id}
+                  onRowClick={(attempt) => {
+                    if (config?.beta_workspaces) {
+                      navigate(`/workspaces/${attempt.id}`);
+                    } else if (projectId && task.id) {
+                      navigate(paths.attempt(projectId, task.id, attempt.id));
+                    }
+                  }}
+                  headerContent={
+                    <div className="w-full flex text-left">
+                      <span className="flex-1">
+                        {t('taskPanel.attemptsCount', {
+                          count: displayedAttempts.length,
+                        })}
+                      </span>
+                      <span>
+                        <Button
+                          variant="icon"
+                          onClick={() =>
+                            CreateAttemptDialog.show({
+                              taskId: task.id,
+                            })
+                          }
+                        >
+                          <PlusIcon size={16} />
+                        </Button>
+                      </span>
+                    </div>
                   }
-                }}
-                headerContent={
-                  <div className="w-full flex text-left">
-                    <span className="flex-1">
-                      {t('taskPanel.attemptsCount', {
-                        count: displayedAttempts.length,
-                      })}
-                    </span>
-                    <span>
-                      <Button
-                        variant="icon"
-                        onClick={() =>
-                          CreateAttemptDialog.show({
-                            taskId: task.id,
-                          })
+                />
+
+                {/* Follow-up section for latest attempt */}
+                {latestAttempt && latestSessionId && (
+                  <div className="border rounded-lg p-4 space-y-3">
+                    <div className="text-sm font-medium">
+                      追加の指示を送る
+                    </div>
+
+                    {isQueued && queuedMessage && (
+                      <Alert>
+                        <Clock className="h-4 w-4" />
+                        <AlertDescription>
+                          メッセージがキューに入っています。現在の実行が終了したら実行されます。
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    {followUpError && (
+                      <Alert variant="destructive">
+                        <AlertDescription>{followUpError}</AlertDescription>
+                      </Alert>
+                    )}
+
+                    <div className="space-y-2">
+                      <WYSIWYGEditor
+                        placeholder={
+                          isAttemptRunning
+                            ? '追加の指示を入力（実行終了後にキューされます）...'
+                            : '追加の指示を入力...'
                         }
-                      >
-                        <PlusIcon size={16} />
-                      </Button>
-                    </span>
+                        value={followUpMessage}
+                        onChange={setFollowUpMessage}
+                        disabled={isSendingFollowUp || isQueueLoading}
+                        projectId={projectId}
+                        taskAttemptId={latestWorkspaceId}
+                        className="min-h-[60px]"
+                      />
+                      <div className="flex items-center gap-2">
+                        {isQueued ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleCancelQueue}
+                            disabled={isQueueLoading}
+                          >
+                            キューをキャンセル
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="accent"
+                            size="sm"
+                            onClick={handleSendFollowUp}
+                            disabled={
+                              !followUpMessage.trim() ||
+                              isSendingFollowUp ||
+                              isQueueLoading
+                            }
+                            className="gap-2"
+                          >
+                            {isAttemptRunning ? (
+                              <>
+                                <Clock size={16} />
+                                キューに追加
+                              </>
+                            ) : (
+                              <>
+                                <Send size={16} />
+                                送信
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                }
-              />
+                )}
+              </div>
             )}
           </div>
         </div>
