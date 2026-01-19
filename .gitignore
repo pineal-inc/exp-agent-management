@@ -1,8 +1,6 @@
 # Rust
 /target
 **/*.rs.bk
-# SQLx query cache
-**/.sqlx/
 
 # Node.js
 node_modules/
