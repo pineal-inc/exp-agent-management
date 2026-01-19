@@ -4,6 +4,10 @@
   <p align="center">エンジニア、PM、ビジネスチーム - AIエージェントと共に働く</p>
 </p>
 
+<p align="center">
+  <img src="docs/images/screenshot-dag.png" alt="Crew DAG View" width="800">
+</p>
+
 ## 概要
 
 Crewは、チーム全員がAIコーディングエージェントを活用できるモダンなタスク管理ツールです。エンジニア、PM、ビジネス担当者など、誰でも以下のことができます:
