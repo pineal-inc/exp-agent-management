@@ -1,0 +1,15 @@
+{
+  "name": "Crew",
+  "short_name": "Crew",
+  "icons": [
+    {
+      "src": "/favicon-crew-light.svg",
+      "sizes": "any",
+      "purpose": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff",
+  "display": "standalone"
+}

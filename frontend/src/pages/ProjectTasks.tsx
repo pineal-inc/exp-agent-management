@@ -1,0 +1,1229 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { AlertTriangle, Plus, X, ExternalLink } from 'lucide-react';
+import { Loader } from '@/components/ui/loader';
+import { tasksApi } from '@/lib/api';
+import type { RepoBranchStatus, Workspace } from 'shared/types';
+import { openTaskForm } from '@/lib/openTaskForm';
+import { FeatureShowcaseDialog } from '@/components/dialogs/global/FeatureShowcaseDialog';
+import { BetaWorkspacesDialog } from '@/components/dialogs/global/BetaWorkspacesDialog';
+import { showcases } from '@/config/showcases';
+import { useUserSystem } from '@/components/ConfigProvider';
+import { useWorkspaceCount } from '@/hooks/useWorkspaceCount';
+import { usePostHog } from 'posthog-js/react';
+
+import { useSearch } from '@/contexts/SearchContext';
+import { useProject } from '@/contexts/ProjectContext';
+import { useTaskAttempts } from '@/hooks/useTaskAttempts';
+import { useTaskAttemptWithSession } from '@/hooks/useTaskAttempt';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useBranchStatus, useAttemptExecution } from '@/hooks';
+import { paths } from '@/lib/paths';
+import { ExecutionProcessesProvider } from '@/contexts/ExecutionProcessesContext';
+import { ClickedElementsProvider } from '@/contexts/ClickedElementsProvider';
+import { ReviewProvider } from '@/contexts/ReviewProvider';
+import {
+  GitOperationsProvider,
+  useGitOperationsError,
+} from '@/contexts/GitOperationsContext';
+import {
+  useKeyCreate,
+  useKeyExit,
+  useKeyFocusSearch,
+  useKeyNavUp,
+  useKeyNavDown,
+  useKeyNavLeft,
+  useKeyNavRight,
+  useKeyOpenDetails,
+  Scope,
+  useKeyDeleteTask,
+  useKeyCycleViewBackward,
+} from '@/keyboard';
+
+import TaskKanbanBoard, {
+  type KanbanColumnItem,
+} from '@/components/tasks/TaskKanbanBoard';
+import { TaskTableView } from '@/components/tasks/TaskTableView';
+import { TaskDAGView } from '@/components/tasks/TaskDagView';
+import { ViewSwitcher } from '@/components/tasks/ViewSwitcher';
+import { TaskStatusTabs } from '@/components/tasks/TaskStatusTabs';
+import { useTaskView } from '@/contexts/TaskViewContext';
+import { useTaskFilters } from '@/contexts/TaskFiltersContext';
+import type { DragEndEvent } from '@/components/ui/shadcn-io/kanban';
+import {
+  useProjectTasks,
+  type SharedTaskRecord,
+} from '@/hooks/useProjectTasks';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useHotkeysContext } from 'react-hotkeys-hook';
+import { TasksLayout, type LayoutMode } from '@/components/layout/TasksLayout';
+import { PreviewPanel } from '@/components/panels/PreviewPanel';
+import { DiffsPanel } from '@/components/panels/DiffsPanel';
+import TaskAttemptPanel from '@/components/panels/TaskAttemptPanel';
+import TaskPanel from '@/components/panels/TaskPanel';
+import SharedTaskPanel from '@/components/panels/SharedTaskPanel';
+import TodoPanel from '@/components/tasks/TodoPanel';
+import { useAuth } from '@/hooks';
+import { useGitHubLinks } from '@/hooks/useGitHubIntegration';
+import { NewCard, NewCardHeader } from '@/components/ui/new-card';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb';
+import { AttemptHeaderActions } from '@/components/panels/AttemptHeaderActions';
+import { TaskPanelHeaderActions } from '@/components/panels/TaskPanelHeaderActions';
+import { ProjectDashboard } from '@/components/dashboard';
+
+import type { TaskWithAttemptStatus, TaskStatus } from 'shared/types';
+
+type Task = TaskWithAttemptStatus;
+
+const TASK_STATUSES = [
+  'todo',
+  'inprogress',
+  'inreview',
+  'done',
+  'cancelled',
+] as const;
+
+const normalizeStatus = (status: string): TaskStatus =>
+  status.toLowerCase() as TaskStatus;
+
+function GitErrorBanner() {
+  const { error: gitError } = useGitOperationsError();
+
+  if (!gitError) return null;
+
+  return (
+    <div className="mx-4 mt-4 p-3 border border-destructive rounded">
+      <div className="text-destructive text-sm">{gitError}</div>
+    </div>
+  );
+}
+
+function DiffsPanelContainer({
+  attempt,
+  selectedTask,
+  branchStatus,
+  branchStatusError,
+}: {
+  attempt: Workspace | null;
+  selectedTask: TaskWithAttemptStatus | null;
+  branchStatus: RepoBranchStatus[] | null;
+  branchStatusError?: Error | null;
+}) {
+  const { isAttemptRunning } = useAttemptExecution(attempt?.id);
+
+  return (
+    <DiffsPanel
+      key={attempt?.id}
+      selectedAttempt={attempt}
+      gitOps={
+        attempt && selectedTask
+          ? {
+              task: selectedTask,
+              branchStatus: branchStatus ?? null,
+              branchStatusError,
+              isAttemptRunning,
+              selectedBranch: branchStatus?.[0]?.target_branch_name ?? null,
+            }
+          : undefined
+      }
+    />
+  );
+}
+
+export function ProjectTasks() {
+  const { t } = useTranslation(['tasks', 'common']);
+  const { taskId, attemptId } = useParams<{
+    projectId: string;
+    taskId?: string;
+    attemptId?: string;
+  }>();
+  const navigate = useNavigate();
+  const { enableScope, disableScope, activeScopes } = useHotkeysContext();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isXL = useMediaQuery('(min-width: 1280px)');
+  const isMobile = !isXL;
+  const posthog = usePostHog();
+  const [selectedSharedTaskId, setSelectedSharedTaskId] = useState<
+    string | null
+  >(null);
+  const { userId } = useAuth();
+  const { viewMode } = useTaskView();
+  const { statusFilter } = useTaskFilters();
+
+  const {
+    projectId,
+    project,
+    isLoading: projectLoading,
+    error: projectError,
+  } = useProject();
+
+  // Check if GitHub is linked to this project (for future use)
+  useGitHubLinks(projectId || '');
+
+  useEffect(() => {
+    enableScope(Scope.KANBAN);
+
+    return () => {
+      disableScope(Scope.KANBAN);
+    };
+  }, [enableScope, disableScope]);
+
+  const handleCreateTask = useCallback(() => {
+    if (projectId) {
+      openTaskForm({ mode: 'create', projectId });
+    }
+  }, [projectId]);
+  const { query: searchQuery, focusInput } = useSearch();
+
+  const {
+    tasks,
+    tasksById,
+    sharedTasksById,
+    sharedOnlyByStatus,
+    isLoading,
+    error: streamError,
+  } = useProjectTasks(projectId || '');
+
+  const selectedTask = useMemo(
+    () => (taskId ? (tasksById[taskId] ?? null) : null),
+    [taskId, tasksById]
+  );
+
+  const selectedSharedTask = useMemo(() => {
+    if (!selectedSharedTaskId) return null;
+    return sharedTasksById[selectedSharedTaskId] ?? null;
+  }, [selectedSharedTaskId, sharedTasksById]);
+
+  useEffect(() => {
+    if (taskId) {
+      setSelectedSharedTaskId(null);
+    }
+  }, [taskId]);
+
+  const isTaskPanelOpen = Boolean(taskId && selectedTask);
+  const isSharedPanelOpen = Boolean(selectedSharedTask);
+  const isPanelOpen = isTaskPanelOpen || isSharedPanelOpen;
+
+  const { config, updateAndSaveConfig, loading } = useUserSystem();
+
+  const isLoaded = !loading;
+  const showcaseId = showcases.taskPanel.id;
+  const seenFeatures = useMemo(
+    () => config?.showcases?.seen_features ?? [],
+    [config?.showcases?.seen_features]
+  );
+  const seen = isLoaded && seenFeatures.includes(showcaseId);
+
+  useEffect(() => {
+    if (!isLoaded || !isPanelOpen || seen) return;
+
+    FeatureShowcaseDialog.show({ config: showcases.taskPanel }).finally(() => {
+      FeatureShowcaseDialog.hide();
+      if (seenFeatures.includes(showcaseId)) return;
+      void updateAndSaveConfig({
+        showcases: { seen_features: [...seenFeatures, showcaseId] },
+      });
+    });
+  }, [
+    isLoaded,
+    isPanelOpen,
+    seen,
+    showcaseId,
+    updateAndSaveConfig,
+    seenFeatures,
+  ]);
+
+  // Beta workspaces invitation - only fetch count if invitation not yet sent
+  const shouldCheckBetaInvitation =
+    isLoaded && !config?.beta_workspaces_invitation_sent;
+  const { data: workspaceCount } = useWorkspaceCount({
+    enabled: shouldCheckBetaInvitation,
+  });
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (config?.beta_workspaces_invitation_sent) return;
+    if (workspaceCount === undefined || workspaceCount <= 50) return;
+
+    BetaWorkspacesDialog.show().then((joinBeta) => {
+      BetaWorkspacesDialog.hide();
+      void updateAndSaveConfig({
+        beta_workspaces_invitation_sent: true,
+        beta_workspaces: joinBeta === true,
+      });
+      if (joinBeta === true) {
+        navigate('/workspaces');
+      }
+    });
+  }, [
+    isLoaded,
+    config?.beta_workspaces_invitation_sent,
+    workspaceCount,
+    updateAndSaveConfig,
+    navigate,
+  ]);
+
+  // Redirect beta users from old attempt URLs to the new workspaces UI
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!config?.beta_workspaces) return;
+    if (!attemptId || attemptId === 'latest') return;
+
+    navigate(`/workspaces/${attemptId}`, { replace: true });
+  }, [isLoaded, config?.beta_workspaces, attemptId, navigate]);
+
+  const isLatest = attemptId === 'latest';
+  const { data: attempts = [], isLoading: isAttemptsLoading } = useTaskAttempts(
+    taskId,
+    {
+      enabled: !!taskId && isLatest,
+    }
+  );
+
+  const latestAttemptId = useMemo(() => {
+    if (!attempts?.length) return undefined;
+    return [...attempts].sort((a, b) => {
+      const diff =
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      if (diff !== 0) return diff;
+      return a.id.localeCompare(b.id);
+    })[0].id;
+  }, [attempts]);
+
+  const navigateWithSearch = useCallback(
+    (pathname: string, options?: { replace?: boolean }) => {
+      const search = searchParams.toString();
+      navigate({ pathname, search: search ? `?${search}` : '' }, options);
+    },
+    [navigate, searchParams]
+  );
+
+  useEffect(() => {
+    if (!projectId || !taskId) return;
+    if (!isLatest) return;
+    if (isAttemptsLoading) return;
+
+    if (!latestAttemptId) {
+      navigateWithSearch(paths.task(projectId, taskId), { replace: true });
+      return;
+    }
+
+    navigateWithSearch(paths.attempt(projectId, taskId, latestAttemptId), {
+      replace: true,
+    });
+  }, [
+    projectId,
+    taskId,
+    isLatest,
+    isAttemptsLoading,
+    latestAttemptId,
+    navigate,
+    navigateWithSearch,
+  ]);
+
+  useEffect(() => {
+    if (!projectId || !taskId || isLoading) return;
+    if (selectedTask === null) {
+      navigate(`/projects/${projectId}/tasks`, { replace: true });
+    }
+  }, [projectId, taskId, isLoading, selectedTask, navigate]);
+
+  const effectiveAttemptId = attemptId === 'latest' ? undefined : attemptId;
+  const isTaskView = !!taskId && !effectiveAttemptId;
+  const { data: attempt } = useTaskAttemptWithSession(effectiveAttemptId);
+
+  const { data: branchStatus, error: branchStatusError } = useBranchStatus(
+    attempt?.id
+  );
+
+  const rawMode = searchParams.get('view') as LayoutMode;
+  const mode: LayoutMode =
+    rawMode === 'preview' || rawMode === 'diffs' ? rawMode : null;
+
+  // TODO: Remove this redirect after v0.1.0 (legacy URL support for bookmarked links)
+  // Migrates old `view=logs` to `view=diffs`
+  useEffect(() => {
+    const view = searchParams.get('view');
+    if (view === 'logs') {
+      const params = new URLSearchParams(searchParams);
+      params.set('view', 'diffs');
+      setSearchParams(params, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const setMode = useCallback(
+    (newMode: LayoutMode) => {
+      const params = new URLSearchParams(searchParams);
+      if (newMode === null) {
+        params.delete('view');
+      } else {
+        params.set('view', newMode);
+      }
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
+
+  const handleCreateNewTask = useCallback(() => {
+    handleCreateTask();
+  }, [handleCreateTask]);
+
+  useKeyCreate(handleCreateNewTask, {
+    scope: Scope.KANBAN,
+    preventDefault: true,
+  });
+
+  useKeyFocusSearch(
+    () => {
+      focusInput();
+    },
+    {
+      scope: Scope.KANBAN,
+      preventDefault: true,
+    }
+  );
+
+  useKeyExit(
+    () => {
+      if (isPanelOpen) {
+        handleClosePanel();
+      } else {
+        navigate('/projects');
+      }
+    },
+    { scope: Scope.KANBAN }
+  );
+
+  const hasSearch = Boolean(searchQuery.trim());
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const showSharedTasks = searchParams.get('shared') !== 'off';
+
+  useEffect(() => {
+    if (showSharedTasks) return;
+    if (!selectedSharedTaskId) return;
+    const sharedTask = sharedTasksById[selectedSharedTaskId];
+    if (sharedTask && sharedTask.assignee_user_id === userId) {
+      return;
+    }
+    setSelectedSharedTaskId(null);
+  }, [selectedSharedTaskId, sharedTasksById, showSharedTasks, userId]);
+
+  const kanbanColumns = useMemo(() => {
+    const columns: Record<TaskStatus, KanbanColumnItem[]> = {
+      todo: [],
+      inprogress: [],
+      inreview: [],
+      done: [],
+      cancelled: [],
+    };
+
+    const matchesSearch = (
+      title: string,
+      description?: string | null
+    ): boolean => {
+      if (!hasSearch) return true;
+      const lowerTitle = title.toLowerCase();
+      const lowerDescription = description?.toLowerCase() ?? '';
+      return (
+        lowerTitle.includes(normalizedSearch) ||
+        lowerDescription.includes(normalizedSearch)
+      );
+    };
+
+    tasks.forEach((task) => {
+      const statusKey = normalizeStatus(task.status);
+      const sharedTask = task.shared_task_id
+        ? sharedTasksById[task.shared_task_id]
+        : sharedTasksById[task.id];
+
+      if (!matchesSearch(task.title, task.description)) {
+        return;
+      }
+
+      // Apply status filter
+      if (statusFilter.length > 0 && !statusFilter.includes(statusKey)) {
+        return;
+      }
+
+      const isSharedAssignedElsewhere =
+        !showSharedTasks &&
+        !!sharedTask &&
+        !!sharedTask.assignee_user_id &&
+        sharedTask.assignee_user_id !== userId;
+
+      if (isSharedAssignedElsewhere) {
+        return;
+      }
+
+      columns[statusKey].push({
+        type: 'task',
+        task,
+        sharedTask,
+      });
+    });
+
+    (
+      Object.entries(sharedOnlyByStatus) as [TaskStatus, SharedTaskRecord[]][]
+    ).forEach(([status, items]) => {
+      if (!columns[status]) {
+        columns[status] = [];
+      }
+      // Apply status filter to shared tasks too
+      if (statusFilter.length > 0 && !statusFilter.includes(status)) {
+        return;
+      }
+      items.forEach((sharedTask) => {
+        if (!matchesSearch(sharedTask.title, sharedTask.description)) {
+          return;
+        }
+        const shouldIncludeShared =
+          showSharedTasks || sharedTask.assignee_user_id === userId;
+        if (!shouldIncludeShared) {
+          return;
+        }
+        columns[status].push({
+          type: 'shared',
+          task: sharedTask,
+        });
+      });
+    });
+
+    const getTimestamp = (item: KanbanColumnItem) => {
+      const createdAt =
+        item.type === 'task' ? item.task.created_at : item.task.created_at;
+      return new Date(createdAt).getTime();
+    };
+
+    TASK_STATUSES.forEach((status) => {
+      columns[status].sort((a, b) => getTimestamp(b) - getTimestamp(a));
+    });
+
+    return columns;
+  }, [
+    hasSearch,
+    normalizedSearch,
+    tasks,
+    sharedOnlyByStatus,
+    sharedTasksById,
+    showSharedTasks,
+    userId,
+    statusFilter,
+  ]);
+
+  const visibleTasksByStatus = useMemo(() => {
+    const map: Record<TaskStatus, Task[]> = {
+      todo: [],
+      inprogress: [],
+      inreview: [],
+      done: [],
+      cancelled: [],
+    };
+
+    TASK_STATUSES.forEach((status) => {
+      map[status] = kanbanColumns[status]
+        .filter((item) => item.type === 'task')
+        .map((item) => item.task);
+    });
+
+    return map;
+  }, [kanbanColumns]);
+
+  const hasVisibleLocalTasks = useMemo(
+    () =>
+      Object.values(visibleTasksByStatus).some(
+        (items) => items && items.length > 0
+      ),
+    [visibleTasksByStatus]
+  );
+
+  const hasVisibleSharedTasks = useMemo(
+    () =>
+      Object.values(kanbanColumns).some((items) =>
+        items.some((item) => item.type === 'shared')
+      ),
+    [kanbanColumns]
+  );
+
+  useKeyNavUp(
+    () => {
+      selectPreviousTask();
+    },
+    {
+      scope: Scope.KANBAN,
+      preventDefault: true,
+    }
+  );
+
+  useKeyNavDown(
+    () => {
+      selectNextTask();
+    },
+    {
+      scope: Scope.KANBAN,
+      preventDefault: true,
+    }
+  );
+
+  useKeyNavLeft(
+    () => {
+      selectPreviousColumn();
+    },
+    {
+      scope: Scope.KANBAN,
+      preventDefault: true,
+    }
+  );
+
+  useKeyNavRight(
+    () => {
+      selectNextColumn();
+    },
+    {
+      scope: Scope.KANBAN,
+      preventDefault: true,
+    }
+  );
+
+  /**
+   * Cycle the attempt area view.
+   * - When panel is closed: opens task details (if a task is selected)
+   * - When panel is open: cycles among [attempt, preview, diffs]
+   */
+  const cycleView = useCallback(
+    (direction: 'forward' | 'backward' = 'forward') => {
+      const order: LayoutMode[] = [null, 'preview', 'diffs'];
+      const idx = order.indexOf(mode);
+      const next =
+        direction === 'forward'
+          ? order[(idx + 1) % order.length]
+          : order[(idx - 1 + order.length) % order.length];
+      setMode(next);
+    },
+    [mode, setMode]
+  );
+
+  const cycleViewForward = useCallback(() => cycleView('forward'), [cycleView]);
+  const cycleViewBackward = useCallback(
+    () => cycleView('backward'),
+    [cycleView]
+  );
+
+  // meta/ctrl+enter → open details or cycle forward
+  const isFollowUpReadyActive = activeScopes.includes(Scope.FOLLOW_UP_READY);
+
+  useKeyOpenDetails(
+    () => {
+      if (isPanelOpen) {
+        // Track keyboard shortcut before cycling view
+        const order: LayoutMode[] = [null, 'preview', 'diffs'];
+        const idx = order.indexOf(mode);
+        const next = order[(idx + 1) % order.length];
+
+        if (next === 'preview') {
+          posthog?.capture('preview_navigated', {
+            trigger: 'keyboard',
+            direction: 'forward',
+            timestamp: new Date().toISOString(),
+            source: 'frontend',
+          });
+        } else if (next === 'diffs') {
+          posthog?.capture('diffs_navigated', {
+            trigger: 'keyboard',
+            direction: 'forward',
+            timestamp: new Date().toISOString(),
+            source: 'frontend',
+          });
+        }
+
+        cycleViewForward();
+      } else if (selectedTask) {
+        handleViewTaskDetails(selectedTask);
+      }
+    },
+    { scope: Scope.KANBAN, when: () => !isFollowUpReadyActive }
+  );
+
+  // meta/ctrl+shift+enter → cycle backward
+  useKeyCycleViewBackward(
+    () => {
+      if (isPanelOpen) {
+        // Track keyboard shortcut before cycling view
+        const order: LayoutMode[] = [null, 'preview', 'diffs'];
+        const idx = order.indexOf(mode);
+        const next = order[(idx - 1 + order.length) % order.length];
+
+        if (next === 'preview') {
+          posthog?.capture('preview_navigated', {
+            trigger: 'keyboard',
+            direction: 'backward',
+            timestamp: new Date().toISOString(),
+            source: 'frontend',
+          });
+        } else if (next === 'diffs') {
+          posthog?.capture('diffs_navigated', {
+            trigger: 'keyboard',
+            direction: 'backward',
+            timestamp: new Date().toISOString(),
+            source: 'frontend',
+          });
+        }
+
+        cycleViewBackward();
+      }
+    },
+    { scope: Scope.KANBAN, preventDefault: true }
+  );
+
+  useKeyDeleteTask(
+    () => {
+      // Note: Delete is now handled by TaskActionsDropdown
+      // This keyboard shortcut could trigger the dropdown action if needed
+    },
+    {
+      scope: Scope.KANBAN,
+      preventDefault: true,
+    }
+  );
+
+  const handleClosePanel = useCallback(() => {
+    if (projectId) {
+      navigate(`/projects/${projectId}/tasks`, { replace: true });
+    }
+  }, [projectId, navigate]);
+
+  const handleViewTaskDetails = useCallback(
+    (task: Task, attemptIdToShow?: string) => {
+      if (!projectId) return;
+      setSelectedSharedTaskId(null);
+
+      // If beta_workspaces is enabled, always navigate to task view (not attempt)
+      if (config?.beta_workspaces) {
+        navigateWithSearch(paths.task(projectId, task.id));
+        return;
+      }
+
+      if (attemptIdToShow) {
+        navigateWithSearch(paths.attempt(projectId, task.id, attemptIdToShow));
+      } else {
+        navigateWithSearch(`${paths.task(projectId, task.id)}/attempts/latest`);
+      }
+    },
+    [projectId, navigateWithSearch, config?.beta_workspaces]
+  );
+
+  const handleViewSharedTask = useCallback(
+    (sharedTask: SharedTaskRecord) => {
+      setSelectedSharedTaskId(sharedTask.id);
+      setMode(null);
+      if (projectId) {
+        navigateWithSearch(paths.projectTasks(projectId), { replace: true });
+      }
+    },
+    [navigateWithSearch, projectId, setMode]
+  );
+
+  const selectNextTask = useCallback(() => {
+    if (selectedTask) {
+      const statusKey = normalizeStatus(selectedTask.status);
+      const tasksInStatus = visibleTasksByStatus[statusKey] || [];
+      const currentIndex = tasksInStatus.findIndex(
+        (task) => task.id === selectedTask.id
+      );
+      if (currentIndex >= 0 && currentIndex < tasksInStatus.length - 1) {
+        handleViewTaskDetails(tasksInStatus[currentIndex + 1]);
+      }
+    } else {
+      for (const status of TASK_STATUSES) {
+        const tasks = visibleTasksByStatus[status];
+        if (tasks && tasks.length > 0) {
+          handleViewTaskDetails(tasks[0]);
+          break;
+        }
+      }
+    }
+  }, [selectedTask, visibleTasksByStatus, handleViewTaskDetails]);
+
+  const selectPreviousTask = useCallback(() => {
+    if (selectedTask) {
+      const statusKey = normalizeStatus(selectedTask.status);
+      const tasksInStatus = visibleTasksByStatus[statusKey] || [];
+      const currentIndex = tasksInStatus.findIndex(
+        (task) => task.id === selectedTask.id
+      );
+      if (currentIndex > 0) {
+        handleViewTaskDetails(tasksInStatus[currentIndex - 1]);
+      }
+    } else {
+      for (const status of TASK_STATUSES) {
+        const tasks = visibleTasksByStatus[status];
+        if (tasks && tasks.length > 0) {
+          handleViewTaskDetails(tasks[0]);
+          break;
+        }
+      }
+    }
+  }, [selectedTask, visibleTasksByStatus, handleViewTaskDetails]);
+
+  const selectNextColumn = useCallback(() => {
+    if (selectedTask) {
+      const currentStatus = normalizeStatus(selectedTask.status);
+      const currentIndex = TASK_STATUSES.findIndex(
+        (status) => status === currentStatus
+      );
+      for (let i = currentIndex + 1; i < TASK_STATUSES.length; i++) {
+        const tasks = visibleTasksByStatus[TASK_STATUSES[i]];
+        if (tasks && tasks.length > 0) {
+          handleViewTaskDetails(tasks[0]);
+          return;
+        }
+      }
+    } else {
+      for (const status of TASK_STATUSES) {
+        const tasks = visibleTasksByStatus[status];
+        if (tasks && tasks.length > 0) {
+          handleViewTaskDetails(tasks[0]);
+          break;
+        }
+      }
+    }
+  }, [selectedTask, visibleTasksByStatus, handleViewTaskDetails]);
+
+  const selectPreviousColumn = useCallback(() => {
+    if (selectedTask) {
+      const currentStatus = normalizeStatus(selectedTask.status);
+      const currentIndex = TASK_STATUSES.findIndex(
+        (status) => status === currentStatus
+      );
+      for (let i = currentIndex - 1; i >= 0; i--) {
+        const tasks = visibleTasksByStatus[TASK_STATUSES[i]];
+        if (tasks && tasks.length > 0) {
+          handleViewTaskDetails(tasks[0]);
+          return;
+        }
+      }
+    } else {
+      for (const status of TASK_STATUSES) {
+        const tasks = visibleTasksByStatus[status];
+        if (tasks && tasks.length > 0) {
+          handleViewTaskDetails(tasks[0]);
+          break;
+        }
+      }
+    }
+  }, [selectedTask, visibleTasksByStatus, handleViewTaskDetails]);
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || !active.data.current) return;
+
+      const draggedTaskId = active.id as string;
+      const newStatus = over.id as Task['status'];
+      const task = tasksById[draggedTaskId];
+      if (!task || task.status === newStatus) return;
+
+      try {
+        await tasksApi.update(draggedTaskId, {
+          title: task.title,
+          description: task.description,
+          status: newStatus,
+          parent_workspace_id: task.parent_workspace_id,
+          image_ids: null,
+          dag_position_x: null,
+          dag_position_y: null,
+          clear_dag_position: false,
+        });
+      } catch (err) {
+        console.error('Failed to update task status:', err);
+      }
+    },
+    [tasksById]
+  );
+
+  const getSharedTask = useCallback(
+    (task: Task | null | undefined) => {
+      if (!task) return undefined;
+      if (task.shared_task_id) {
+        return sharedTasksById[task.shared_task_id];
+      }
+      return sharedTasksById[task.id];
+    },
+    [sharedTasksById]
+  );
+
+  const hasSharedTasks = useMemo(() => {
+    return Object.values(kanbanColumns).some((items) =>
+      items.some((item) => {
+        if (item.type === 'shared') return true;
+        return Boolean(item.sharedTask);
+      })
+    );
+  }, [kanbanColumns]);
+
+  const isInitialTasksLoad = isLoading && tasks.length === 0;
+
+  // Only show full-page error if we have no project data at all
+  if (projectError && !project) {
+    return (
+      <div className="p-4">
+        <Alert>
+          <AlertTitle className="flex items-center gap-2">
+            <AlertTriangle size="16" />
+            {t('common:states.error')}
+          </AlertTitle>
+          <AlertDescription>
+            {projectError.message || 'Failed to load project'}
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  if (projectLoading && isInitialTasksLoad) {
+    return <Loader message={t('loading')} size={32} className="py-8" />;
+  }
+
+  const truncateTitle = (title: string | undefined, maxLength = 20) => {
+    if (!title) return 'Task';
+    if (title.length <= maxLength) return title;
+
+    const truncated = title.substring(0, maxLength);
+    const lastSpace = truncated.lastIndexOf(' ');
+
+    return lastSpace > 0
+      ? `${truncated.substring(0, lastSpace)}...`
+      : `${truncated}...`;
+  };
+
+  // Integration icons for empty state
+  const GitHubIcon = () => (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+    </svg>
+  );
+
+  const NotionIcon = () => (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+      <path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.98-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.166V6.354c0-.606-.233-.933-.748-.886l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952l1.448.327s0 .84-1.168.84l-3.22.186c-.094-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.14c-.093-.514.28-.886.747-.933zM2.1 1.155l13.215-.933c1.681-.14 2.101-.046 3.149.7l4.344 3.034c.7.513.933.653.933 1.212v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.921c0-.84.373-1.54 1.381-1.766z"/>
+    </svg>
+  );
+
+  const JiraIcon = () => (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+      <path d="M11.571 11.513H0a5.218 5.218 0 0 0 5.232 5.215h2.13v2.057A5.215 5.215 0 0 0 12.575 24V12.518a1.005 1.005 0 0 0-1.005-1.005zm5.723-5.756H5.736a5.215 5.215 0 0 0 5.215 5.214h2.129v2.058a5.218 5.218 0 0 0 5.215 5.214V6.758a1.001 1.001 0 0 0-1.001-1.001zM23.013 0H11.455a5.215 5.215 0 0 0 5.215 5.215h2.129v2.057A5.215 5.215 0 0 0 24 12.483V1.005A1.005 1.005 0 0 0 23.013 0z"/>
+    </svg>
+  );
+
+  const integrationTools = [
+    { id: 'github', name: 'GitHub', icon: GitHubIcon, available: true },
+    { id: 'notion', name: 'Notion', icon: NotionIcon, available: false },
+    { id: 'jira', name: 'Jira', icon: JiraIcon, available: false },
+  ];
+
+  const taskListContent =
+    tasks.length === 0 && !hasSharedTasks ? (
+      <div className="flex items-center justify-center h-full p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="text-center py-12">
+            <div className="mb-6">
+              <div className="mx-auto w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                <Plus className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <p className="text-lg font-medium mb-2">{t('empty.noTasks')}</p>
+              <p className="text-sm text-muted-foreground">
+                {t('empty.startByCreating', { defaultValue: 'タスクを作成して始めましょう' })}
+              </p>
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button onClick={handleCreateNewTask} className="w-full">
+                <Plus className="h-4 w-4 mr-2" />
+                {t('empty.createFirst')}
+              </Button>
+
+              {/* External Tools Integration Section */}
+              {projectId && (
+                <div className="pt-4 border-t">
+                  <p className="text-sm text-muted-foreground mb-3">
+                    {t('empty.importFromTools', { defaultValue: '外部ツールからインポート' })}
+                  </p>
+                  <div className="flex justify-center gap-2 mb-3">
+                    {integrationTools.map((tool) => (
+                      <div
+                        key={tool.id}
+                        className={`p-2.5 rounded-lg border transition-colors ${
+                          tool.available
+                            ? 'hover:bg-muted cursor-pointer'
+                            : 'opacity-40 cursor-not-allowed'
+                        }`}
+                        title={tool.available ? tool.name : `${tool.name} (Coming Soon)`}
+                      >
+                        <tool.icon />
+                      </div>
+                    ))}
+                  </div>
+                  <Button variant="outline" className="w-full" asChild>
+                    <Link to={`/settings/projects?projectId=${projectId}`}>
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      {t('empty.setupIntegrations', { defaultValue: '連携設定を開く' })}
+                    </Link>
+                  </Button>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    ) : !hasVisibleLocalTasks && !hasVisibleSharedTasks ? (
+      <div className="flex items-center justify-center h-full p-4">
+        <Card className="max-w-md w-full">
+          <CardContent className="text-center py-8">
+            <p className="text-muted-foreground">
+              {t('empty.noSearchResults')}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    ) : viewMode === 'dashboard' ? (
+      <ProjectDashboard
+        tasks={tasks}
+        onViewTaskDetails={handleViewTaskDetails}
+      />
+    ) : viewMode === 'table' ? (
+      <TaskTableView
+        columns={kanbanColumns}
+        onViewTaskDetails={handleViewTaskDetails}
+        onViewSharedTask={handleViewSharedTask}
+        selectedTaskId={selectedTask?.id}
+        selectedSharedTaskId={selectedSharedTaskId}
+        onCreateTask={handleCreateNewTask}
+      />
+    ) : viewMode === 'dag' ? (
+      <TaskDAGView
+        tasks={tasks}
+        projectId={projectId!}
+        onViewDetails={handleViewTaskDetails}
+      />
+    ) : (
+      <div className="w-full h-full overflow-x-auto overflow-y-auto overscroll-x-contain">
+        <TaskKanbanBoard
+          columns={kanbanColumns}
+          onDragEnd={handleDragEnd}
+          onViewTaskDetails={handleViewTaskDetails}
+          onViewSharedTask={handleViewSharedTask}
+          selectedTaskId={selectedTask?.id}
+          selectedSharedTaskId={selectedSharedTaskId}
+          onCreateTask={handleCreateNewTask}
+          projectId={projectId!}
+        />
+      </div>
+    );
+
+  const kanbanContent = (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-2 border-b shrink-0 gap-4">
+        {viewMode === 'dag' && !config?.simple_view_mode ? <TaskStatusTabs /> : <div />}
+        <ViewSwitcher />
+      </div>
+      <div className="flex-1 min-h-0">{taskListContent}</div>
+    </div>
+  );
+
+  const rightHeader = selectedTask ? (
+    <NewCardHeader
+      className="shrink-0"
+      actions={
+        isTaskView ? (
+          <TaskPanelHeaderActions
+            task={selectedTask}
+            sharedTask={getSharedTask(selectedTask)}
+            onClose={() =>
+              navigate(`/projects/${projectId}/tasks`, { replace: true })
+            }
+          />
+        ) : (
+          <AttemptHeaderActions
+            mode={mode}
+            onModeChange={setMode}
+            task={selectedTask}
+            sharedTask={getSharedTask(selectedTask)}
+            attempt={attempt ?? null}
+            onClose={() =>
+              navigate(`/projects/${projectId}/tasks`, { replace: true })
+            }
+          />
+        )
+      }
+    >
+      <div className="mx-auto w-full">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              {isTaskView ? (
+                <BreadcrumbPage>
+                  {truncateTitle(selectedTask?.title)}
+                </BreadcrumbPage>
+              ) : (
+                <BreadcrumbLink
+                  className="cursor-pointer hover:underline"
+                  onClick={() =>
+                    navigateWithSearch(paths.task(projectId!, taskId!))
+                  }
+                >
+                  {truncateTitle(selectedTask?.title)}
+                </BreadcrumbLink>
+              )}
+            </BreadcrumbItem>
+            {!isTaskView && (
+              <>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>
+                    {attempt?.branch || 'Task Attempt'}
+                  </BreadcrumbPage>
+                </BreadcrumbItem>
+              </>
+            )}
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+    </NewCardHeader>
+  ) : selectedSharedTask ? (
+    <NewCardHeader
+      className="shrink-0"
+      actions={
+        <Button
+          variant="icon"
+          aria-label={t('common:buttons.close', { defaultValue: 'Close' })}
+          onClick={() => {
+            setSelectedSharedTaskId(null);
+            if (projectId) {
+              navigateWithSearch(paths.projectTasks(projectId), {
+                replace: true,
+              });
+            }
+          }}
+        >
+          <X size={16} />
+        </Button>
+      }
+    >
+      <div className="mx-auto w-full">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbPage>
+                {truncateTitle(selectedSharedTask?.title)}
+              </BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+    </NewCardHeader>
+  ) : null;
+
+  const attemptContent = selectedTask ? (
+    <NewCard className="h-full min-h-0 flex flex-col bg-muted border-0">
+      {isTaskView ? (
+        <TaskPanel task={selectedTask} />
+      ) : (
+        <TaskAttemptPanel attempt={attempt} task={selectedTask}>
+          {({ logs, followUp }) => (
+            <>
+              <GitErrorBanner />
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="flex-1 min-h-0 flex flex-col">{logs}</div>
+
+                <div className="shrink-0 border-t">
+                  <div className="mx-auto w-full max-w-full xl:max-w-[50rem]">
+                    <TodoPanel />
+                  </div>
+                </div>
+
+                <div className="min-h-0 max-h-[50%] border-t overflow-hidden bg-background">
+                  <div className="mx-auto w-full max-w-full xl:max-w-[50rem] h-full min-h-0">
+                    {followUp}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </TaskAttemptPanel>
+      )}
+    </NewCard>
+  ) : selectedSharedTask ? (
+    <NewCard className="h-full min-h-0 flex flex-col bg-muted border-0">
+      <SharedTaskPanel task={selectedSharedTask} />
+    </NewCard>
+  ) : null;
+
+  const auxContent =
+    selectedTask && attempt ? (
+      <div className="relative h-full w-full">
+        {mode === 'preview' && <PreviewPanel />}
+        {mode === 'diffs' && (
+          <DiffsPanelContainer
+            attempt={attempt}
+            selectedTask={selectedTask}
+            branchStatus={branchStatus ?? null}
+            branchStatusError={branchStatusError}
+          />
+        )}
+      </div>
+    ) : (
+      <div className="relative h-full w-full" />
+    );
+
+  const effectiveMode: LayoutMode = selectedSharedTask ? null : mode;
+
+  const attemptArea = (
+    <GitOperationsProvider attemptId={attempt?.id}>
+      <ClickedElementsProvider attempt={attempt}>
+        <ReviewProvider attemptId={attempt?.id}>
+          <ExecutionProcessesProvider
+            attemptId={attempt?.id}
+            sessionId={attempt?.session?.id}
+          >
+            <TasksLayout
+              kanban={kanbanContent}
+              attempt={attemptContent}
+              aux={auxContent}
+              isPanelOpen={isPanelOpen}
+              mode={effectiveMode}
+              isMobile={isMobile}
+              rightHeader={rightHeader}
+            />
+          </ExecutionProcessesProvider>
+        </ReviewProvider>
+      </ClickedElementsProvider>
+    </GitOperationsProvider>
+  );
+
+  const connectionError =
+    streamError || (projectError && project ? projectError.message : null);
+
+  return (
+    <div className="h-full flex flex-col">
+      {connectionError && (
+        <Alert className="w-full z-30 xl:sticky xl:top-0">
+          <AlertTitle className="flex items-center gap-2">
+            <AlertTriangle size="16" />
+            {t('common:states.reconnecting')}
+          </AlertTitle>
+          <AlertDescription>{connectionError}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="flex-1 min-h-0">{attemptArea}</div>
+    </div>
+  );
+}

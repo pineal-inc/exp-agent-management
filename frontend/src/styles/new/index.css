@@ -1,0 +1,495 @@
+/* Modern, rounded fonts - Japanese-friendly with soft appearance */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&family=Noto+Emoji:wght@300..700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 1) THEME TOKENS scoped to .new-design */
+@layer base {
+  /* Light defaults - New Design - Neutral gray, modern, minimal */
+  .new-design {
+    color-scheme: light;
+    /* Pure neutral white background */
+    --_background: 0 0% 99%;
+    --_foreground: 0 0% 15%;
+    --_primary: 220 10% 40%;
+    --_primary-foreground: 0 0% 100%;
+    --_secondary: 220 6% 95%;
+    --_secondary-foreground: 0 0% 25%;
+    --_muted: 220 6% 93%;
+    --_muted-foreground: 0 0% 45%;
+    --_accent: 220 6% 92%;
+    --_accent-foreground: 0 0% 20%;
+    --_destructive: 0 65% 55%;
+    --_destructive-foreground: 0 0% 100%;
+    --_border: 220 6% 90%;
+    --_input: 220 6% 97%;
+    --_ring: 220 10% 45%;
+    /* Slightly smaller radius for modern clean look */
+    --_radius: 0.625rem;
+
+    /* Status (light) - muted, professional colors */
+    --_success: 152 45% 45%;
+    --_success-foreground: 152 45% 15%;
+    --_warning: 38 70% 50%;
+    --_warning-foreground: 38 70% 15%;
+    --_info: 220 10% 45%;
+    --_info-foreground: 0 0% 100%;
+    --_neutral: 220 6% 93%;
+    --_neutral-foreground: 0 0% 35%;
+
+    /* Console (light) */
+    --_console-background: 0 0% 100%;
+    --_console-foreground: 0 0% 20%;
+    --_console-success: 152 45% 45%;
+    --_console-error: 0 65% 55%;
+
+    /* Syntax highlighting (light) - muted tones */
+    --_syntax-keyword: #a626a4;
+    --_syntax-function: #6c5ce7;
+    --_syntax-constant: #0984e3;
+    --_syntax-string: #00a86b;
+    --_syntax-variable: #d35400;
+    --_syntax-comment: #95a5a6;
+    --_syntax-tag: #00b894;
+    --_syntax-punctuation: #2d3436;
+    --_syntax-deleted: #d63031;
+
+    /* Text (light) - neutral gray tones */
+    --text-high: 0 0% 12%;
+    --text-normal: 0 0% 32%;
+    --text-low: 0 0% 52%;
+
+    /* Background (light) - clean neutral */
+    --bg-primary: 0 0% 99%;
+    --bg-secondary: 220 6% 96%;
+    --bg-panel: 220 6% 93%;
+
+    /* Accent (light) - subtle slate gray */
+    --brand: 220 10% 40%;
+    --brand-hover: 220 12% 50%;
+    --brand-secondary: 220 10% 35%;
+    --error: 0 65% 55%;
+    --success: 152 45% 45%;
+
+    /* Text on accent */
+    --text-on-brand: 0 0% 100%;
+
+    /* Card shadows - subtle and clean */
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  }
+
+  /* Dark mode - handles both .new-design.dark and .dark .new-design */
+  /* Modern dark theme with neutral gray */
+  .new-design.dark,
+  .dark .new-design {
+    color-scheme: dark;
+
+    /* Internal variables (dark) - neutral dark */
+    --_background: 0 0% 9%;
+    --_foreground: 0 0% 92%;
+    --_primary: 220 8% 55%;
+    --_primary-foreground: 0 0% 100%;
+    --_secondary: 220 6% 14%;
+    --_secondary-foreground: 0 0% 85%;
+    --_muted: 220 6% 18%;
+    --_muted-foreground: 0 0% 60%;
+    --_accent: 220 6% 20%;
+    --_accent-foreground: 0 0% 92%;
+    --_destructive: 0 55% 50%;
+    --_destructive-foreground: 0 0% 100%;
+    --_border: 220 6% 20%;
+    --_input: 220 6% 14%;
+    --_ring: 220 8% 55%;
+
+    /* Status (dark) - muted colors */
+    --_success: 152 50% 42%;
+    --_success-foreground: 152 50% 95%;
+    --_warning: 38 65% 55%;
+    --_warning-foreground: 38 65% 95%;
+    --_info: 220 8% 60%;
+    --_info-foreground: 0 0% 100%;
+    --_neutral: 220 6% 22%;
+    --_neutral-foreground: 0 0% 80%;
+
+    /* Text (dark) - soft neutral */
+    --text-high: 0 0% 95%;
+    --text-normal: 0 0% 75%;
+    --text-low: 0 0% 55%;
+
+    /* Background (dark) - deep neutral */
+    --bg-primary: 0 0% 9%;
+    --bg-secondary: 220 6% 6%;
+    --bg-panel: 220 6% 14%;
+
+    /* Accent (dark) - soft gray */
+    --brand: 220 8% 55%;
+    --brand-hover: 220 10% 65%;
+    --brand-secondary: 220 8% 48%;
+    --error: 0 55% 50%;
+    --success: 152 50% 42%;
+
+    /* Text on accent */
+    --text-on-brand: 0 0% 100%;
+
+    /* Card shadows - dark mode */
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+
+    /* Console (dark) */
+    --_console-background: 0 0% 5%;
+    --_console-foreground: 0 0% 92%;
+    --_console-success: 152 50% 42%;
+    --_console-error: 0 55% 50%;
+
+    /* Syntax highlighting (dark) - softer */
+    --_syntax-keyword: #f1a7f1;
+    --_syntax-function: #a29bfe;
+    --_syntax-constant: #74b9ff;
+    --_syntax-string: #55efc4;
+    --_syntax-variable: #ffeaa7;
+    --_syntax-comment: #636e72;
+    --_syntax-tag: #81ecec;
+    --_syntax-punctuation: #dfe6e9;
+    --_syntax-deleted: #fab1a0;
+  }
+}
+
+/* 2) PUBLIC TOKENS scoped to .new-design */
+@layer base {
+  .new-design {
+    --background: var(--vscode-editor-background, var(--_background));
+    --foreground: var(--vscode-editor-foreground, var(--_foreground));
+
+    --card: var(--muted);
+    --card-foreground: var(--muted-foreground);
+    --popover: var(--background);
+    --popover-foreground: var(--foreground);
+
+    --primary: var(--vscode-button-background, var(--_primary));
+    --primary-foreground: var(
+      --vscode-editor-foreground,
+      var(--_primary-foreground)
+    );
+    --secondary: var(--vscode-input-background, var(--_secondary));
+    --secondary-foreground: var(
+      --vscode-input-foreground,
+      var(--_secondary-foreground)
+    );
+
+    --muted: var(--vscode-editor-background, var(--_muted));
+    --muted-foreground: var(
+      --vscode-descriptionForeground,
+      var(--_muted-foreground)
+    );
+    --accent: var(--vscode-focusBorder, var(--_accent));
+    --accent-foreground: var(
+      --vscode-editor-foreground,
+      var(--_accent-foreground)
+    );
+
+    --destructive: var(--vscode-errorForeground, var(--_destructive));
+    --destructive-foreground: var(
+      --vscode-button-foreground,
+      var(--_destructive-foreground)
+    );
+
+    --border: var(--vscode-input-background, var(--_border));
+    --input: var(--vscode-input-background, var(--_input));
+    --ring: var(--vscode-focusBorder, var(--_ring));
+
+    --radius: var(--_radius);
+
+    /* Status */
+    --success: var(--vscode-testing-iconPassed, var(--_success));
+    --success-foreground: var(
+      --vscode-editor-foreground,
+      var(--_success-foreground)
+    );
+    --warning: var(--vscode-testing-iconQueued, var(--_warning));
+    --warning-foreground: var(
+      --vscode-descriptionForeground,
+      var(--_warning-foreground)
+    );
+    --info: var(--vscode-focusBorder, var(--_info));
+    --info-foreground: var(--vscode-editor-foreground, var(--_info-foreground));
+    --neutral: var(--vscode-input-background, var(--_neutral));
+    --neutral-foreground: var(
+      --vscode-editor-foreground,
+      var(--_neutral-foreground)
+    );
+
+    /* Console/terminal */
+    --console-background: var(
+      --vscode-editor-background,
+      var(--_console-background)
+    );
+    --console-foreground: var(
+      --vscode-terminal-foreground,
+      var(--_console-foreground)
+    );
+    --console-success: var(
+      --vscode-testing-iconPassed,
+      var(--_console-success)
+    );
+    --console-error: var(--vscode-terminal-ansiRed, var(--_console-error));
+
+    /* Syntax highlighting */
+    --syntax-keyword: var(--_syntax-keyword);
+    --syntax-function: var(--_syntax-function);
+    --syntax-constant: var(--_syntax-constant);
+    --syntax-string: var(--_syntax-string);
+    --syntax-variable: var(--_syntax-variable);
+    --syntax-comment: var(--_syntax-comment);
+    --syntax-tag: var(--_syntax-tag);
+    --syntax-punctuation: var(--_syntax-punctuation);
+    --syntax-deleted: var(--_syntax-deleted);
+
+    /* Allotment */
+    --separator-border: hsl(var(--border));
+    --focus-border: hsl(var(--brand));
+  }
+}
+
+/* 3) Base styles scoped to .new-design */
+@layer base {
+  .new-design *,
+  .new-design *::before,
+  .new-design *::after {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    @apply min-h-screen;
+    @apply font-normal;
+  }
+
+  .new-design {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .new-design *:focus {
+    @apply ring-inset;
+  }
+
+  .new-design .logo {
+    @apply fill-foreground;
+  }
+
+  .new-design a,
+  .new-design button,
+  .new-design button * {
+    @apply transition-all duration-200;
+    cursor: pointer;
+  }
+
+  /* Smooth transitions for interactive elements */
+  .new-design input,
+  .new-design textarea,
+  .new-design select {
+    @apply transition-all duration-200;
+  }
+
+  /* Card hover lift effect */
+  .new-design .card-interactive {
+    @apply transition-all duration-300;
+  }
+  .new-design .card-interactive:hover {
+    transform: translateY(-2px);
+  }
+}
+
+/* ANSI color classes for fancy-ansi */
+@layer components {
+  .ansi-red {
+    @apply text-red-500;
+  }
+
+  .ansi-green {
+    @apply text-green-500;
+  }
+
+  .ansi-yellow {
+    @apply text-yellow-500;
+  }
+
+  .ansi-blue {
+    @apply text-blue-500;
+  }
+
+  .ansi-magenta {
+    @apply text-purple-500;
+  }
+
+  .ansi-cyan {
+    @apply text-cyan-500;
+  }
+
+  .ansi-white {
+    @apply text-white;
+  }
+
+  .ansi-black {
+    @apply text-black;
+  }
+
+  .ansi-bright-red {
+    @apply text-red-400;
+  }
+
+  .ansi-bright-green {
+    @apply text-green-400;
+  }
+
+  .ansi-bright-yellow {
+    @apply text-yellow-400;
+  }
+
+  .ansi-bright-blue {
+    @apply text-blue-400;
+  }
+
+  .ansi-bright-magenta {
+    @apply text-purple-400;
+  }
+
+  .ansi-bright-cyan {
+    @apply text-cyan-400;
+  }
+
+  .ansi-bright-white {
+    @apply text-gray-200;
+  }
+
+  .ansi-bright-black {
+    @apply text-gray-700;
+  }
+
+  .ansi-bold {
+    @apply font-bold;
+  }
+
+  .ansi-italic {
+    @apply italic;
+  }
+
+  .ansi-underline {
+    @apply underline;
+  }
+}
+
+/* Modern animation utilities */
+@layer utilities {
+  /* Staggered animation delays for lists */
+  .new-design .stagger-1 { animation-delay: 0.05s; }
+  .new-design .stagger-2 { animation-delay: 0.1s; }
+  .new-design .stagger-3 { animation-delay: 0.15s; }
+  .new-design .stagger-4 { animation-delay: 0.2s; }
+  .new-design .stagger-5 { animation-delay: 0.25s; }
+  .new-design .stagger-6 { animation-delay: 0.3s; }
+  .new-design .stagger-7 { animation-delay: 0.35s; }
+  .new-design .stagger-8 { animation-delay: 0.4s; }
+
+  /* Shimmer loading effect */
+  .new-design .shimmer-bg {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--bg-secondary)) 0%,
+      hsl(var(--bg-panel)) 50%,
+      hsl(var(--bg-secondary)) 100%
+    );
+    background-size: 200% 100%;
+  }
+
+  /* Hover glow effect */
+  .new-design .hover-glow {
+    @apply transition-shadow duration-300;
+  }
+  .new-design .hover-glow:hover {
+    box-shadow: 0 0 20px hsl(var(--brand) / 0.15);
+  }
+
+  /* Press effect for buttons */
+  .new-design .press-effect:active {
+    transform: scale(0.98);
+  }
+
+  /* Subtle border animation on focus */
+  .new-design .focus-ring-animated:focus {
+    animation: pulse-subtle 1.5s ease-in-out infinite;
+  }
+}
+
+/* Animated border for running chat box */
+@keyframes border-flash {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@layer components {
+  .new-design .chat-box-running {
+    @apply relative;
+  }
+
+  .new-design .chat-box-running::before {
+    content: '';
+    @apply absolute inset-0 pointer-events-none rounded-t-md;
+    padding: 1px;
+    padding-bottom: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--brand) / 0.6) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: border-flash 2.5s ease-in-out infinite;
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
+  /* Skeleton loading component */
+  .new-design .skeleton {
+    @apply bg-panel animate-pulse rounded;
+  }
+
+  /* Modern card with subtle hover */
+  .new-design .card-modern {
+    @apply bg-secondary rounded-lg transition-all duration-300;
+    box-shadow: var(--shadow-card);
+  }
+  .new-design .card-modern:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
+  }
+
+  /* Glass effect card */
+  .new-design .card-glass {
+    @apply bg-secondary/80 backdrop-blur-sm rounded-lg border border-border/50;
+  }
+
+  /* Gradient text utility */
+  .new-design .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(var(--text-high)) 0%, hsl(var(--text-low)) 100%);
+  }
+}
+
+@config '../../../tailwind.new.config.js';

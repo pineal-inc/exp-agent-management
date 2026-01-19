@@ -1,0 +1,264 @@
+name: Create GitHub Pre-Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: "Version bump type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prerelease
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+env:
+  NODE_VERSION: 22
+  PNPM_VERSION: 10.13.1
+  RUST_TOOLCHAIN: nightly-2025-12-04
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.version.outputs.new_tag }}
+      new_version: ${{ steps.version.outputs.new_version }}
+      branch_suffix: ${{ steps.branch.outputs.suffix }}
+    steps:
+      - name: Cache cargo-edit
+        uses: actions/cache@v3
+        id: cache-cargo-edit
+        with:
+          path: ~/.cargo/bin/cargo-set-version
+          key: cargo-edit-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}
+
+      - name: Install cargo-edit
+        if: steps.cache-cargo-edit.outputs.cache-hit != 'true'
+        run: cargo install cargo-edit
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: setup node
+        uses: ./.github/actions/setup-node
+
+      - name: Generate branch suffix
+        id: branch
+        run: |
+          branch_name="${{ github.ref_name }}"
+          suffix=$(echo "$branch_name" | tail -c 7 | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
+          echo "Branch: $branch_name"
+          echo "Suffix: $suffix"
+          echo "suffix=$suffix" >> $GITHUB_OUTPUT
+
+      - name: Determine and update versions
+        id: version
+        run: |
+          latest_npm_version=$(npm view crew version 2>/dev/null || echo "0.0.0")
+          echo "Latest npm version: $latest_npm_version"
+
+          timestamp=$(date +%Y%m%d%H%M%S)
+
+          if [[ "${{ github.event.inputs.version_type }}" == "prerelease" ]]; then
+            npm version prerelease --preid="${{ steps.branch.outputs.suffix }}" --no-git-tag-version
+            new_version=$(node -p "require('./package.json').version")
+            new_tag="v${new_version}.${timestamp}"
+          else
+            npm version $latest_npm_version --no-git-tag-version --allow-same-version
+            npm version ${{ github.event.inputs.version_type }} --no-git-tag-version
+            new_version=$(node -p "require('./package.json').version")
+            new_tag="v${new_version}-${timestamp}"
+          fi
+
+          cd npx-cli && npm version $new_version --no-git-tag-version --allow-same-version && cd ..
+          cd frontend && npm version $new_version --no-git-tag-version --allow-same-version && cd ..
+          cargo set-version --workspace "$new_version"
+
+          echo "New version: $new_version"
+          echo "new_version=$new_version" >> $GITHUB_OUTPUT
+          echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
+
+      - name: Commit changes and create tag
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json pnpm-lock.yaml npx-cli/package.json frontend/package.json Cargo.lock
+          git add $(find . -name Cargo.toml)
+          git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }}"
+          git tag -a ${{ steps.version.outputs.new_tag }} -m "Release ${{ steps.version.outputs.new_tag }}"
+          git push
+          git push --tags
+
+  build-frontend:
+    needs: bump-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.new_tag }}
+
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Lint frontend
+        run: cd frontend && npm run lint
+
+      - name: Type check frontend
+        run: cd frontend && npx tsc --noEmit
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 1
+
+  build-backend:
+    needs: [bump-version, build-frontend]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            name: linux-x64
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            name: linux-arm64
+          - target: x86_64-apple-darwin
+            os: macos-13
+            name: macos-x64
+          - target: aarch64-apple-darwin
+            os: macos-14
+            name: macos-arm64
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.new_tag }}
+
+      - name: Cache Rust toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.rustup/toolchains
+          key: rust-toolchain-${{ runner.os }}-${{ matrix.target }}-${{ env.RUST_TOOLCHAIN }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ matrix.target }}
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          DEBIAN_FRONTEND=noninteractive sudo apt-get install -y musl-tools clang libclang-dev lld llvm
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ matrix.target }}-
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
+      - name: Build backend
+        run: |
+          if [[ "${{ matrix.target }}" == "x86_64-apple-darwin" ]]; then
+            export MACOSX_DEPLOYMENT_TARGET=10.12
+          elif [[ "${{ matrix.target }}" == "aarch64-apple-darwin" ]]; then
+            export MACOSX_DEPLOYMENT_TARGET=11.0
+          fi
+          cargo build --release --target ${{ matrix.target }} -p server -p review --bin server --bin mcp_task_server --bin review
+
+      - name: Prepare binaries
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/server dist/vibe-kanban
+          cp target/${{ matrix.target }}/release/mcp_task_server dist/vibe-kanban-mcp
+          cp target/${{ matrix.target }}/release/review dist/vibe-kanban-review
+
+          # Create zip files with platform prefix for GitHub Releases
+          cd dist
+          zip ${{ matrix.name }}-vibe-kanban.zip vibe-kanban
+          zip ${{ matrix.name }}-vibe-kanban-mcp.zip vibe-kanban-mcp
+          zip ${{ matrix.name }}-vibe-kanban-review.zip vibe-kanban-review
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-binary-${{ matrix.name }}
+          path: dist/*.zip
+          retention-days: 1
+
+  create-prerelease:
+    needs: [bump-version, build-frontend, build-backend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.new_tag }}
+
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-binary-*
+          path: binaries/
+          merge-multiple: true
+
+      - name: List downloaded binaries
+        run: |
+          echo "Downloaded binaries:"
+          find binaries/
+
+      - name: Setup Node for npm pack
+        uses: ./.github/actions/setup-node
+
+      - name: Inject GitHub info and pack
+        run: |
+          cd npx-cli
+          # Replace placeholders with actual values
+          sed -i "s|__GITHUB_OWNER__|${{ github.repository_owner }}|g" bin/download.js
+          sed -i "s|__GITHUB_REPO__|${GITHUB_REPOSITORY#*/}|g" bin/download.js
+          sed -i "s|__BINARY_TAG__|${{ needs.bump-version.outputs.new_tag }}|g" bin/download.js
+          npm pack
+
+      - name: Create GitHub Pre-Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.bump-version.outputs.new_tag }}
+          name: Pre-release ${{ needs.bump-version.outputs.new_tag }}
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            binaries/*.zip
+            npx-cli/crew-*.tgz
