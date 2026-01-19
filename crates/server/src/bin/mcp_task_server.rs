@@ -39,7 +39,7 @@ fn main() -> anyhow::Result<()> {
                     .or_else(|_| std::env::var("HOST"))
                     .unwrap_or_else(|_| "127.0.0.1".to_string());
 
-                // Get port from environment variables or fall back to port file
+                // Get port from environment variables or fall back to port file or default
                 let port = match std::env::var("MCP_PORT")
                     .or_else(|_| std::env::var("BACKEND_PORT"))
                     .or_else(|_| std::env::var("PORT"))
@@ -51,9 +51,26 @@ fn main() -> anyhow::Result<()> {
                         })?
                     }
                     Err(_) => {
-                        let port = read_port_file("crew").await?;
-                        tracing::info!("[MCP] Using port from port file: {}", port);
-                        port
+                        // Try to read from port file, but fall back to default if not found
+                        match read_port_file("crew").await {
+                            Ok(port) => {
+                                tracing::info!("[MCP] Using port from port file: {}", port);
+                                port
+                            }
+                            Err(e) => {
+                                // Default port if port file doesn't exist (server not running)
+                                let default_port = 3001;
+                                tracing::warn!(
+                                    "[MCP] Port file not found (server may not be running): {}. Using default port {}",
+                                    e,
+                                    default_port
+                                );
+                                tracing::info!(
+                                    "[MCP] To specify a port, set MCP_PORT, BACKEND_PORT, or PORT environment variable"
+                                );
+                                default_port
+                            }
+                        }
                     }
                 };
 
