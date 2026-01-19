@@ -200,10 +200,10 @@ const TaskDAGViewInner = memo(function TaskDAGViewInner({
   const completedTasksCount = tasks.filter(t => t.status === 'done').length;
   const progressPercent = totalTasks > 0 ? (completedTasksCount / totalTasks) * 100 : 0;
 
-  // Classify tasks based on dependencies:
-  // - DAG: Tasks with dependencies (incoming or outgoing)
-  // - Pool: Tasks without dependencies & status is not done
-  // - Archive: Tasks without dependencies & status is done
+  // Classify tasks based on dependencies and position:
+  // - DAG: Tasks with dependencies (incoming or outgoing) OR with dag_position_x/y set
+  // - Pool: Tasks without dependencies & no position & status is not done
+  // - Archive: Tasks without dependencies & no position & status is done
   const { dagTasks, poolTasks, archiveTasks } = useMemo(() => {
     const inDag: TaskWithAttemptStatus[] = [];
     const inPool: TaskWithAttemptStatus[] = [];
@@ -218,15 +218,16 @@ const TaskDAGViewInner = memo(function TaskDAGViewInner({
 
     tasks.forEach((task) => {
       const hasDependency = tasksWithDependencies.has(task.id);
+      const hasPosition = task.dag_position_x !== null && task.dag_position_y !== null;
 
-      if (hasDependency) {
-        // Has dependencies -> DAG view
+      if (hasDependency || hasPosition) {
+        // Has dependencies OR has position -> DAG view
         inDag.push(task);
       } else if (task.status === 'done') {
-        // No dependencies & completed -> Archive
+        // No dependencies & no position & completed -> Archive
         inArchive.push(task);
       } else {
-        // No dependencies & not completed -> Task pool
+        // No dependencies & no position & not completed -> Task pool
         inPool.push(task);
       }
     });

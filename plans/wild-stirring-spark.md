@@ -1,114 +1,60 @@
-# Cmd+Z Undo機能の実装計画
+# DAGビューでの依存関係なしタスク表示の改善
 
 ## 概要
-タスク操作（作成・更新・削除・移動）をCmd+Z/Ctrl+Zで元に戻せるようにする。
+タスクを追加した時に、依存関係がなくてもDAGエリアにノードとして表示できるようにする。
 
-## 現状分析
+## 現状
+- **依存関係あり** → DAGビューに表示
+- **依存関係なし & 未完了** → サイドバー（タスクプール）に表示
+- **依存関係なし & 完了** → アーカイブに表示
 
-### 既存の技術スタック
-- **状態管理**: Zustand
-- **キーボード管理**: `react-hotkeys-hook` + 独自のregistry.ts
-- **データ取得**: React Query (@tanstack/react-query)
-- **API**: REST API (`frontend/src/lib/api.ts`)
+## 要望
+- タスク作成直後でも、DAGエリアにノードとして表示したい
+- サイドバーからドラッグ＆ドロップでDAGに配置したい
 
-### 関連ファイル
-- `frontend/src/keyboard/registry.ts` - キーバインディング定義
-- `frontend/src/stores/` - Zustandストア
-- `frontend/src/hooks/useTaskMutations.ts` - タスク操作フック
+## 実装方針
 
----
+### 変更箇所
+**ファイル**: `frontend/src/components/tasks/TaskDagView.tsx`
 
-## 実装計画
-
-### Step 1: Undo/Redoストア作成
-**ファイル**: `frontend/src/stores/useUndoRedoStore.ts`
+現在のタスク分類ロジック（207-235行目）を以下のように変更：
 
 ```typescript
-interface UndoableOperation {
-  type: 'create' | 'update' | 'delete' | 'move';
-  taskId: string;
-  data: any;        // 操作データ
-  reverseData: any; // 元に戻すためのデータ
-  timestamp: number;
+// 現在のロジック
+const hasDependency = tasksWithDependencies.has(task.id);
+if (hasDependency) {
+  inDag.push(task);  // 依存関係あり → DAG
+} else if (task.status === 'done') {
+  inArchive.push(task);  // 依存関係なし & 完了 → アーカイブ
+} else {
+  inPool.push(task);  // 依存関係なし & 未完了 → プール
 }
 
-interface UndoRedoState {
-  past: UndoableOperation[];
-  future: UndoableOperation[];
-  pushOperation: (op: UndoableOperation) => void;
-  undo: () => UndoableOperation | null;
-  redo: () => UndoableOperation | null;
-  clear: () => void;
+// 新しいロジック
+const hasDependency = tasksWithDependencies.has(task.id);
+const hasPosition = task.dag_position_x !== null && task.dag_position_y !== null;
+
+if (hasDependency || hasPosition) {
+  inDag.push(task);  // 依存関係あり OR 位置情報あり → DAG
+} else if (task.status === 'done') {
+  inArchive.push(task);  // 依存関係なし & 位置なし & 完了 → アーカイブ
+} else {
+  inPool.push(task);  // 依存関係なし & 位置なし & 未完了 → プール
 }
 ```
 
-### Step 2: キーボードショートカット登録
-**ファイル**: `frontend/src/keyboard/registry.ts`
-
-```typescript
-// Action enumに追加
-UNDO = 'undo',
-REDO = 'redo',
-
-// キーバインディング追加
-[Action.UNDO]: { keys: ['meta+z', 'ctrl+z'], scope: Scope.GLOBAL },
-[Action.REDO]: { keys: ['meta+shift+z', 'ctrl+shift+z'], scope: Scope.GLOBAL },
-```
-
-### Step 3: Undoフック作成
-**ファイル**: `frontend/src/hooks/useUndoRedo.ts`
-
-- キーボードイベントリスナー
-- 操作実行ロジック（API呼び出し）
-- React Queryキャッシュ更新
-
-### Step 4: タスク操作にUndo対応を追加
-**ファイル**: `frontend/src/hooks/useTaskMutations.ts`
-
-各操作（create/update/delete）の成功時にUndoスタックにpush
-
-### Step 5: グローバルプロバイダー追加
-**ファイル**: `frontend/src/App.tsx` または新規Context
-
-Undoフックをアプリ全体で有効化
-
----
-
-## 対象操作
-
-| 操作 | Undo時の処理 |
-|------|-------------|
-| タスク作成 | 作成したタスクを削除 |
-| タスク更新 | 変更前の状態に戻す |
-| タスク削除 | 削除したタスクを再作成 |
-| ステータス移動 | 元のステータスに戻す |
-
----
+### 動作フロー
+1. タスク作成時 → サイドバー（タスクプール）に表示
+2. サイドバーからDAGエリアにドラッグ＆ドロップ → `dag_position_x/y` が設定される
+3. DAGエリアに表示される（依存関係がなくても）
+4. DAGノードをサイドバーにドラッグ → `dag_position_x/y` がクリアされ、プールに戻る
 
 ## 検証方法
+1. `pnpm run dev` でアプリ起動（バックエンドも起動）
+2. プロジェクトを作成
+3. タスクを作成 → サイドバーに表示される
+4. サイドバーからDAGエリアにドラッグ＆ドロップ → DAGに表示される
+5. DAGノードをサイドバーにドラッグ → プールに戻る
 
-1. `pnpm run dev` でアプリ起動
-2. タスクを作成 → Cmd+Z → タスクが削除される
-3. タスクを編集 → Cmd+Z → 編集前に戻る
-4. タスクを削除 → Cmd+Z → タスクが復元される
-5. Cmd+Shift+Z → Redoが動作する
-
----
-
-## 設定
-
-- **履歴保持数**: 30件
-- **リロード時**: 履歴クリア（ローカルのみ）
-- **複数タブ同期**: なし（シンプルに保つ）
-
----
-
-## 変更対象ファイル
-
-| ファイル | 変更内容 |
-|---------|---------|
-| `frontend/src/stores/useUndoRedoStore.ts` | 新規作成 - Undoスタック管理 |
-| `frontend/src/keyboard/registry.ts` | Undo/Redoキーバインディング追加 |
-| `frontend/src/hooks/useUndoRedo.ts` | 新規作成 - Undoロジック |
-| `frontend/src/hooks/useTaskMutations.ts` | 操作時にスタックへpush |
-| `frontend/src/App.tsx` | Undoフック有効化 |
+## 変更ファイル
+- `frontend/src/components/tasks/TaskDagView.tsx` - タスク分類ロジック変更（約10行）
