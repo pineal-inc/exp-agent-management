@@ -1,6 +1,6 @@
 {
   "name": "crew",
-  "version": "0.0.156",
+  "version": "0.0.157",
   "private": true,
   "scripts": {
     "lint": "npm run frontend:lint && npm run backend:lint",
