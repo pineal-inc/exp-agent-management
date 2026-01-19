@@ -30,6 +30,8 @@ export enum Action {
   SUBMIT_TASK_ALT = 'submit_task_alt',
   SUBMIT_COMMENT = 'submit_comment',
   CYCLE_VIEW_BACKWARD = 'cycle_view_backward',
+  UNDO = 'undo',
+  REDO = 'redo',
 }
 
 export interface KeyBinding {
@@ -217,6 +219,22 @@ export const keyBindings: KeyBinding[] = [
     scopes: [Scope.EDIT_COMMENT],
     description: 'Submit review comment',
     group: 'Comments',
+  },
+
+  // Undo/Redo actions
+  {
+    action: Action.UNDO,
+    keys: ['meta+z', 'ctrl+z'],
+    scopes: [Scope.GLOBAL],
+    description: 'Undo last task operation',
+    group: 'Global',
+  },
+  {
+    action: Action.REDO,
+    keys: ['meta+shift+z', 'ctrl+shift+z'],
+    scopes: [Scope.GLOBAL],
+    description: 'Redo last undone operation',
+    group: 'Global',
   },
 ];
 

@@ -33,10 +33,10 @@ import { useUserSystem } from '@/components/ConfigProvider';
 import {
   useTaskImages,
   useImageUpload,
-  useTaskMutations,
   useProjectRepos,
   useRepoBranchSelection,
 } from '@/hooks';
+import { useTaskMutationsWithUndo } from '@/hooks/useTaskMutationsWithUndo';
 import {
   useKeySubmitTask,
   useKeySubmitTaskAlt,
@@ -89,7 +89,7 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
   const modal = useModal();
   const { t } = useTranslation(['tasks', 'common']);
   const { createTask, createAndStart, updateTask } =
-    useTaskMutations(projectId);
+    useTaskMutationsWithUndo(projectId);
   const { system, profiles, loading: userSystemLoading } = useUserSystem();
   const { upload, uploadForTask } = useImageUpload();
   const { enableScope, disableScope } = useHotkeysContext();

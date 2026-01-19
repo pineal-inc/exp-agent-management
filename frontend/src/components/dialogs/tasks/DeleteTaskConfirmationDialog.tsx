@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
-import { tasksApi } from '@/lib/api';
+import { useTaskMutationsWithUndo } from '@/hooks/useTaskMutationsWithUndo';
 import type { TaskWithAttemptStatus } from 'shared/types';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
@@ -20,27 +20,28 @@ export interface DeleteTaskConfirmationDialogProps {
 }
 
 const DeleteTaskConfirmationDialogImpl =
-  NiceModal.create<DeleteTaskConfirmationDialogProps>(({ task }) => {
+  NiceModal.create<DeleteTaskConfirmationDialogProps>(({ task, projectId }) => {
     const modal = useModal();
-    const [isDeleting, setIsDeleting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const { deleteTask } = useTaskMutationsWithUndo(projectId);
 
     const handleConfirmDelete = async () => {
-      setIsDeleting(true);
       setError(null);
 
-      try {
-        await tasksApi.delete(task.id);
-        modal.resolve();
-        modal.hide();
-      } catch (err: unknown) {
-        const errorMessage =
-          err instanceof Error ? err.message : 'Failed to delete task';
-        setError(errorMessage);
-      } finally {
-        setIsDeleting(false);
-      }
+      deleteTask.mutate(task.id, {
+        onSuccess: () => {
+          modal.resolve();
+          modal.hide();
+        },
+        onError: (err: unknown) => {
+          const errorMessage =
+            err instanceof Error ? err.message : 'Failed to delete task';
+          setError(errorMessage);
+        },
+      });
     };
+
+    const isDeleting = deleteTask.isPending;
 
     const handleCancelDelete = () => {
       modal.reject();

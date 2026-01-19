@@ -37,6 +37,7 @@ import { DisclaimerDialog } from '@/components/dialogs/global/DisclaimerDialog';
 import { OnboardingDialog } from '@/components/dialogs/global/OnboardingDialog';
 import { ReleaseNotesDialog } from '@/components/dialogs/global/ReleaseNotesDialog';
 import { ClickedElementsProvider } from './contexts/ClickedElementsProvider';
+import { UndoRedoProvider } from './components/UndoRedoProvider';
 
 // Design scope components
 import { LegacyDesignScope } from '@/components/legacy-design/LegacyDesignScope';
@@ -129,6 +130,7 @@ function AppContent() {
   return (
     <I18nextProvider i18n={i18n}>
       <ThemeProvider initialTheme={config?.theme || ThemeMode.SYSTEM}>
+        <UndoRedoProvider>
         <SearchProvider>
           <TaskViewProvider>
           <TaskFiltersProvider>
@@ -205,6 +207,7 @@ function AppContent() {
           </TaskFiltersProvider>
           </TaskViewProvider>
         </SearchProvider>
+        </UndoRedoProvider>
       </ThemeProvider>
     </I18nextProvider>
   );
