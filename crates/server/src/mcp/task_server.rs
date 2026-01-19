@@ -1008,7 +1008,7 @@ impl ServerHandler for TaskServer {
             protocol_version: ProtocolVersion::V_2025_03_26,
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation {
-                name: "crew".to_string(),
+                name: "crewio".to_string(),
                 version: "1.0.0".to_string(),
             },
             instructions: Some(instruction),
