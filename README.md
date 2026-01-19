@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/screenshot-dag.png" alt="Crew DAG View" width="800">
+  <img src="docs/images/image1.png" alt="Crew DAG View" width="800">
 </p>
 
 ## 概要
