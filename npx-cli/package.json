@@ -1,12 +1,18 @@
 {
   "name": "crewio",
   "private": false,
-  "version": "0.0.153",
+  "version": "0.0.154",
   "main": "index.js",
   "bin": {
     "crew": "bin/cli.js"
   },
-  "keywords": ["ai", "agent", "kanban", "task-management", "team"],
+  "keywords": [
+    "ai",
+    "agent",
+    "kanban",
+    "task-management",
+    "team"
+  ],
   "author": "",
   "license": "MIT",
   "description": "AI-powered task management for everyone - Engineers, PMs, and Business teams",
