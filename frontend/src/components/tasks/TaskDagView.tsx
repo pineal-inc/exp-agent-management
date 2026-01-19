@@ -158,6 +158,8 @@ const TaskDAGViewInner = memo(function TaskDAGViewInner({
   const initialLayoutAppliedRef = useRef(false);
   // Debounce timer for auto-layout
   const layoutDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Flag to skip fitView on next auto-layout (used when moving tasks to pool/archive)
+  const skipNextFitViewRef = useRef(false);
 
   // Orchestration state and controls - disabled until backend API is ready
   // const {
@@ -328,7 +330,7 @@ const TaskDAGViewInner = memo(function TaskDAGViewInner({
   }, [updateTask]);
 
   // Auto layout using dagre (Left to Right) or swimlane mode
-  const applyAutoLayout = useCallback((nodesToLayout: Node<TaskNodeData>[], edgesToLayout: Edge[], savePositions = false) => {
+  const applyAutoLayout = useCallback((nodesToLayout: Node<TaskNodeData>[], edgesToLayout: Edge[], savePositions = false, skipFitView = false) => {
     let layoutedNodes: Node<TaskNodeData>[];
 
     if (swimlaneMode && genres.length > 0) {
@@ -364,9 +366,12 @@ const TaskDAGViewInner = memo(function TaskDAGViewInner({
     }
 
     // Fit view after layout with a small delay to ensure nodes are positioned
-    setTimeout(() => {
-      fitView({ padding: 0.2, duration: 300 });
-    }, 50);
+    // Skip fitView when moving tasks to pool/archive to avoid scrolling
+    if (!skipFitView) {
+      setTimeout(() => {
+        fitView({ padding: 0.2, duration: 300 });
+      }, 50);
+    }
   }, [setNodes, fitView, swimlaneMode, genres, saveNodePositions]);
 
   const onAutoLayout = useCallback(() => {
@@ -411,11 +416,15 @@ const TaskDAGViewInner = memo(function TaskDAGViewInner({
         clearTimeout(layoutDebounceTimerRef.current);
       }
 
+      // Capture skipFitView value (ref might change before timer fires)
+      const shouldSkipFitView = skipNextFitViewRef.current;
+      skipNextFitViewRef.current = false; // Reset flag
+
       // Debounce layout recalculation (300ms)
       layoutDebounceTimerRef.current = setTimeout(() => {
         const freshNodes = layoutNodes(dagTasks, onViewDetails, getTaskReadiness);
         const freshEdges = createEdges(dependencies, handleEdgeDelete, genresById);
-        applyAutoLayout(freshNodes, freshEdges);
+        applyAutoLayout(freshNodes, freshEdges, false, shouldSkipFitView);
         layoutDebounceTimerRef.current = null;
       }, 300);
     }
@@ -586,6 +595,8 @@ const TaskDAGViewInner = memo(function TaskDAGViewInner({
     (_event: React.MouseEvent, node: Node<TaskNodeData>) => {
       // Use the ref to get the current value (avoids stale closure issue)
       if (isDraggingOverArchiveRef.current) {
+        // Skip fitView when moving to archive to prevent view scrolling
+        skipNextFitViewRef.current = true;
         // Move task to archive by setting status to 'done' and clearing dag_position
         updateTask.mutate({
           taskId: node.id,
@@ -601,6 +612,8 @@ const TaskDAGViewInner = memo(function TaskDAGViewInner({
           },
         });
       } else if (isDraggingOverSidebarRef.current) {
+        // Skip fitView when moving to pool to prevent view scrolling
+        skipNextFitViewRef.current = true;
         // Move task back to pool by clearing dag_position
         updateTask.mutate({
           taskId: node.id,

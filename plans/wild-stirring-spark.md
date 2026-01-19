@@ -1,69 +1,96 @@
-# Undo/Redo（Cmd+Z）が効かない問題の修正
+# DAGビューでタスクをプールに移動した時のスクロール問題修正
 
 ## 問題
-タスク操作後にCmd+Z（Undo）を押しても動作しない。
+タスクをタスクプール（サイドバー）にドラッグ＆ドロップで移動させると、DAGビューが左にスクロールしてしまう。
 
 ## 原因
-ほとんどのコンポーネントがUndo非対応の`useTaskMutations`を使用しているため、Undoスタックに操作が記録されていない。
+タスクをプールに移動すると以下の処理フローが発生：
 
-### 現状の使用状況
-
-| コンポーネント | 使用フック | Undo対応 |
-|---------------|-----------|---------|
-| TaskFormDialog | useTaskMutationsWithUndo | ✅ |
-| DeleteTaskConfirmationDialog | useTaskMutationsWithUndo | ✅ |
-| **TaskPanel** | useTaskMutations | ❌ |
-| **TaskDagView** | useTaskMutations | ❌ |
-| **NoServerContent** | useTaskMutations | ❌ |
-| **ShareDialog** | useTaskMutations | ❌ |
-| **StopShareTaskDialog** | useTaskMutations | ❌ |
+1. `handleNodeDragStop` → タスクの位置をクリア（`dag_position_x/y = null`）
+2. `dagTasks`が再計算 → ノード数が減少
+3. auto-layout useEffect が発火（`nodesCount`の変更を検出）
+4. `applyAutoLayout`が呼ばれる
+5. **`fitView({ padding: 0.2, duration: 300 })`が呼ばれる** ← これがスクロールの原因
 
 ## 実装方針
 
-### 変更対象ファイル
+`skipNextFitViewRef`を追加し、サイドバー/アーカイブへのドロップ時のみ`fitView`をスキップする。
 
-1. **`frontend/src/components/TaskPanel.tsx`**
-   - `useTaskMutations` → `useTaskMutationsWithUndo` に変更
-   - ステータス変更（updateTask）がUndo対象になる
+### 変更ファイル
+- `frontend/src/components/tasks/TaskDagView.tsx`
 
-2. **`frontend/src/components/tasks/TaskDagView.tsx`**
-   - `useTaskMutations` → `useTaskMutationsWithUndo` に変更
-   - DAG位置更新（updateTask）がUndo対象になる
+### 実装ステップ
 
-3. **`frontend/src/pages/NoServerContent.tsx`**
-   - `useTaskMutations` → `useTaskMutationsWithUndo` に変更
-   - タスク作成がUndo対象になる
-
-4. **`frontend/src/components/ShareDialog.tsx`**
-   - `useTaskMutations` → `useTaskMutationsWithUndo` に変更
-
-5. **`frontend/src/components/StopShareTaskDialog.tsx`**
-   - `useTaskMutations` → `useTaskMutationsWithUndo` に変更
-
-### 変更内容（各ファイル共通）
-
+#### 1. ref追加（line 160付近）
 ```typescript
-// Before
-import { useTaskMutations } from '@/hooks/useTaskMutations';
-const { updateTask, deleteTask, ... } = useTaskMutations(projectId);
+const skipNextFitViewRef = useRef(false);
+```
 
-// After
-import { useTaskMutationsWithUndo } from '@/hooks/useTaskMutationsWithUndo';
-const { updateTask, deleteTask, ... } = useTaskMutationsWithUndo(projectId);
+#### 2. applyAutoLayout関数に`skipFitView`パラメータを追加（line 331-370）
+```typescript
+const applyAutoLayout = useCallback((
+  nodesToLayout: Node<TaskNodeData>[],
+  edgesToLayout: Edge[],
+  savePositions = false,
+  skipFitView = false  // 新パラメータ
+) => {
+  // ... 既存のレイアウト計算ロジック（変更なし） ...
+
+  // fitViewの条件付き実行
+  if (!skipFitView) {
+    setTimeout(() => {
+      fitView({ padding: 0.2, duration: 300 });
+    }, 50);
+  }
+}, [setNodes, fitView, swimlaneMode, genres, saveNodePositions]);
+```
+
+#### 3. handleNodeDragStopでフラグを設定（line 585-640）
+```typescript
+const handleNodeDragStop = useCallback(
+  (_event: React.MouseEvent, node: Node<TaskNodeData>) => {
+    if (isDraggingOverArchiveRef.current) {
+      skipNextFitViewRef.current = true;  // ← 追加
+      updateTask.mutate({...});
+    } else if (isDraggingOverSidebarRef.current) {
+      skipNextFitViewRef.current = true;  // ← 追加
+      updateTask.mutate({...});
+    } else {
+      // DAG内での移動はフラグを立てない
+      updateTask.mutate({...});
+    }
+    // ...
+  },
+  [updateTask]
+);
+```
+
+#### 4. useEffectでフラグをチェック（line 382-432）
+```typescript
+if (initialLayoutAppliedRef.current && autoLayoutEnabled && hasChanges) {
+  if (layoutDebounceTimerRef.current) {
+    clearTimeout(layoutDebounceTimerRef.current);
+  }
+
+  // skipFitViewの値をキャプチャ（タイマー発火時にrefが変わっている可能性があるため）
+  const shouldSkipFitView = skipNextFitViewRef.current;
+  skipNextFitViewRef.current = false;  // リセット
+
+  layoutDebounceTimerRef.current = setTimeout(() => {
+    const freshNodes = layoutNodes(dagTasks, onViewDetails, getTaskReadiness);
+    const freshEdges = createEdges(dependencies, handleEdgeDelete, genresById);
+    applyAutoLayout(freshNodes, freshEdges, false, shouldSkipFitView);
+    layoutDebounceTimerRef.current = null;
+  }, 300);
+}
 ```
 
 ## 検証方法
 
 1. `pnpm run dev` でアプリ起動
-2. プロジェクトを開く
-3. **TaskPanel**でタスクのステータスを変更
-4. Cmd+Z（Mac）/ Ctrl+Z（Windows）を押す
-5. ステータスが元に戻ることを確認
-6. Cmd+Shift+Z / Ctrl+Shift+Z でRedoが動作することを確認
-
-## 変更ファイル一覧
-- `frontend/src/components/TaskPanel.tsx`
-- `frontend/src/components/tasks/TaskDagView.tsx`
-- `frontend/src/pages/NoServerContent.tsx`
-- `frontend/src/components/ShareDialog.tsx`
-- `frontend/src/components/StopShareTaskDialog.tsx`
+2. プロジェクトを開き、DAGビューに複数のタスクを配置
+3. タスクをサイドバー（プール）にドラッグ → **ビュー位置が維持される**ことを確認
+4. タスクをアーカイブにドラッグ → **ビュー位置が維持される**ことを確認
+5. 「自動整列」ボタンをクリック → `fitView`が実行される（従来通り）
+6. swimlaneモードを切り替え → `fitView`が実行される（従来通り）
+7. プールからDAGにタスクをドロップ → `fitView`が実行される（従来通り）
