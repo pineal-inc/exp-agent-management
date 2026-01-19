@@ -274,4 +274,4 @@ jobs:
           generate_release_notes: true
           files: |
             binaries/*.zip
-            npx-cli/crew-*.tgz
+            npx-cli/crewio-*.tgz
