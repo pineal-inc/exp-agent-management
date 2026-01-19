@@ -569,6 +569,9 @@ pub trait ContainerService {
 
         if prefix.is_empty() {
             format!("{}-{}", short_uuid(workspace_id), task_title_id)
+        } else if prefix == "crew" {
+            // crew プレフィックスの場合は crew/{short_uuid}-{task_title_id} の形式
+            format!("{}/{}-{}", prefix, short_uuid(workspace_id), task_title_id)
         } else {
             format!("{}/{}-{}", prefix, short_uuid(workspace_id), task_title_id)
         }
