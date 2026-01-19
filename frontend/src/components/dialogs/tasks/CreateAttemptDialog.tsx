@@ -27,13 +27,16 @@ import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
 import type { ExecutorProfileId, BaseCodingAgent } from 'shared/types';
 import { useKeySubmitTask, Scope } from '@/keyboard';
+import { sessionsApi } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
 
 export interface CreateAttemptDialogProps {
   taskId: string;
+  initialPrompt?: string;
 }
 
 const CreateAttemptDialogImpl = NiceModal.create<CreateAttemptDialogProps>(
-  ({ taskId }) => {
+  ({ taskId, initialPrompt }) => {
     const modal = useModal();
     const navigate = useNavigateWithSearch();
     const { projectId } = useProject();
@@ -41,7 +44,39 @@ const CreateAttemptDialogImpl = NiceModal.create<CreateAttemptDialogProps>(
     const { profiles, config } = useUserSystem();
     const { createAttempt, isCreating, error } = useAttemptCreation({
       taskId,
-      onSuccess: (attempt) => {
+      onSuccess: async (attempt) => {
+        // If there's an initial prompt, wait for session to be created and send it
+        if (initialPrompt?.trim()) {
+          // Poll for session creation (max 10 attempts, 500ms interval)
+          let sessionId: string | null = null;
+          for (let i = 0; i < 10; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            try {
+              const sessions = await sessionsApi.getByWorkspace(attempt.id);
+              if (sessions.length > 0 && sessions[0].id) {
+                sessionId = sessions[0].id;
+                break;
+              }
+            } catch (err) {
+              console.error('Failed to fetch session:', err);
+            }
+          }
+
+          if (sessionId) {
+            try {
+              await sessionsApi.followUp(sessionId, {
+                prompt: initialPrompt.trim(),
+                variant: null,
+                retry_process_id: null,
+                force_when_dirty: null,
+                perform_git_reset: null,
+              });
+            } catch (err) {
+              console.error('Failed to send initial prompt:', err);
+            }
+          }
+        }
+
         if (projectId) {
           navigate(paths.attempt(projectId, taskId, attempt.id));
         }

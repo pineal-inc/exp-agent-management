@@ -424,24 +424,48 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
                 {t('taskPanel.errorLoadingAttempts')}
               </div>
             ) : displayedAttempts.length === 0 ? (
-              /* No attempts - show prominent CTA */
-              <div className="border rounded-lg p-6 text-center space-y-4">
-                <div className="text-muted-foreground text-sm">
-                  {t('taskPanel.noAttempts')}
+              /* No attempts - show prominent CTA with optional prompt */
+              <div className="space-y-4">
+                <div className="border rounded-lg p-6 text-center space-y-4">
+                  <div className="text-muted-foreground text-sm">
+                    {t('taskPanel.noAttempts')}
+                  </div>
+                  <Button
+                    variant="accent"
+                    size="lg"
+                    className="gap-2"
+                    onClick={() =>
+                      CreateAttemptDialog.show({
+                        taskId: task.id,
+                        initialPrompt: followUpMessage.trim() || undefined,
+                      })
+                    }
+                  >
+                    <Play size={18} />
+                    エージェントを実行
+                  </Button>
                 </div>
-                <Button
-                  variant="accent"
-                  size="lg"
-                  className="gap-2"
-                  onClick={() =>
-                    CreateAttemptDialog.show({
-                      taskId: task.id,
-                    })
-                  }
-                >
-                  <Play size={18} />
-                  エージェントを実行
-                </Button>
+
+                {/* Follow-up input for new attempts */}
+                <div className="border rounded-lg p-4 space-y-3">
+                  <div className="text-sm font-medium">
+                    追加の指示（オプション）
+                  </div>
+                  <div className="space-y-2">
+                    <WYSIWYGEditor
+                      placeholder="追加の指示を入力（オプション）..."
+                      value={followUpMessage}
+                      onChange={setFollowUpMessage}
+                      projectId={projectId}
+                      className="min-h-[60px]"
+                    />
+                    {followUpMessage.trim() && (
+                      <div className="text-xs text-muted-foreground">
+                        エージェント実行時にこの指示も送信されます
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
@@ -463,24 +487,25 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
                           count: displayedAttempts.length,
                         })}
                       </span>
-                      <span>
-                        <Button
-                          variant="icon"
-                          onClick={() =>
-                            CreateAttemptDialog.show({
-                              taskId: task.id,
-                            })
-                          }
-                        >
-                          <PlusIcon size={16} />
-                        </Button>
-                      </span>
+                    <span>
+                      <Button
+                        variant="icon"
+                        onClick={() =>
+                          CreateAttemptDialog.show({
+                            taskId: task.id,
+                            initialPrompt: followUpMessage.trim() || undefined,
+                          })
+                        }
+                      >
+                        <PlusIcon size={16} />
+                      </Button>
+                    </span>
                     </div>
                   }
                 />
 
                 {/* Follow-up section for latest attempt */}
-                {latestAttempt && latestSessionId && (
+                {latestAttempt && latestSessionId ? (
                   <div className="border rounded-lg p-4 space-y-3">
                     <div className="text-sm font-medium">
                       追加の指示を送る
@@ -551,6 +576,27 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
                           </Button>
                         )}
                       </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Follow-up input when no attempts yet */
+                  <div className="border rounded-lg p-4 space-y-3">
+                    <div className="text-sm font-medium">
+                      追加の指示（オプション）
+                    </div>
+                    <div className="space-y-2">
+                      <WYSIWYGEditor
+                        placeholder="追加の指示を入力（オプション）..."
+                        value={followUpMessage}
+                        onChange={setFollowUpMessage}
+                        projectId={projectId}
+                        className="min-h-[60px]"
+                      />
+                      {followUpMessage.trim() && (
+                        <div className="text-xs text-muted-foreground">
+                          新しいattempt作成時にこの指示も送信されます
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
