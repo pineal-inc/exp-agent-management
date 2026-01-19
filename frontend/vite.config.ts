@@ -67,7 +67,7 @@ export default defineConfig(({ mode }) => ({
         ],
       },
     }),
-    sentryVitePlugin({ org: "bloop-ai", project: "vibe-kanban" }),
+    sentryVitePlugin({ org: "bloop-ai", project: "crew" }),
     executorSchemasPlugin(),
   ],
   resolve: {

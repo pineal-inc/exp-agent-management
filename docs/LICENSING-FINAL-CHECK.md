@@ -1,7 +1,7 @@
 # Apache-2.0 ライセンス遵守 - 最終確認レポート
 
 **確認日**: 2025-01-XX  
-**リポジトリ**: vibe-kanban-neo  
+**リポジトリ**: crew  
 **フォーク元**: [BloopAI/vibe-kanban](https://github.com/BloopAI/vibe-kanban)
 
 ---

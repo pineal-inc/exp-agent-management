@@ -179,7 +179,7 @@ async function main() {
   }
 
   if (isMcpMode) {
-    await extractAndRun("vibe-kanban-mcp", (bin) => {
+    await extractAndRun("crew-mcp", (bin) => {
       const proc = spawn(bin, [], { stdio: "inherit" });
       proc.on("exit", (c) => process.exit(c || 0));
       proc.on("error", (e) => {
@@ -192,7 +192,7 @@ async function main() {
       process.on("SIGTERM", () => proc.kill("SIGTERM"));
     });
   } else if (isReviewMode) {
-    await extractAndRun("vibe-kanban-review", (bin) => {
+    await extractAndRun("crew-review", (bin) => {
       const reviewArgs = args.slice(1);
       const proc = spawn(bin, reviewArgs, { stdio: "inherit" });
       proc.on("exit", (c) => process.exit(c || 0));
@@ -205,7 +205,7 @@ async function main() {
     const modeLabel = LOCAL_DEV_MODE ? " (local dev)" : "";
     showBanner();
     console.log(`  v${CLI_VERSION}${modeLabel} を起動中...\n`);
-    await extractAndRun("vibe-kanban", (bin) => {
+    await extractAndRun("crew", (bin) => {
       if (platform === "win32") {
         execSync(`"${bin}"`, { stdio: "inherit" });
       } else {

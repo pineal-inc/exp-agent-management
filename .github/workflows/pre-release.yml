@@ -216,15 +216,15 @@ jobs:
       - name: Prepare binaries
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/server dist/vibe-kanban
-          cp target/${{ matrix.target }}/release/mcp_task_server dist/vibe-kanban-mcp
-          cp target/${{ matrix.target }}/release/review dist/vibe-kanban-review
+          cp target/${{ matrix.target }}/release/server dist/crew
+          cp target/${{ matrix.target }}/release/mcp_task_server dist/crew-mcp
+          cp target/${{ matrix.target }}/release/review dist/crew-review
 
           # Create zip files with platform prefix for GitHub Releases
           cd dist
-          zip ${{ matrix.name }}-vibe-kanban.zip vibe-kanban
-          zip ${{ matrix.name }}-vibe-kanban-mcp.zip vibe-kanban-mcp
-          zip ${{ matrix.name }}-vibe-kanban-review.zip vibe-kanban-review
+          zip ${{ matrix.name }}-crew.zip crew
+          zip ${{ matrix.name }}-crew-mcp.zip crew-mcp
+          zip ${{ matrix.name }}-crew-review.zip crew-review
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4

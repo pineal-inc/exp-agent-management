@@ -10,7 +10,7 @@ import { useSearchParams } from 'react-router-dom';
 
 export type TaskViewMode = 'kanban' | 'table' | 'dag' | 'dashboard';
 
-const LOCAL_STORAGE_KEY = 'vibe-kanban-task-view-mode';
+const LOCAL_STORAGE_KEY = 'crew-task-view-mode';
 
 interface TaskViewState {
   viewMode: TaskViewMode;

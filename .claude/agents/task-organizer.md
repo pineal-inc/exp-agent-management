@@ -34,7 +34,7 @@ tools:
 ```
 # 必須設定
 OWNER:              ogasawarariku      # GitHubオーナー
-REPO:               vibe-kanban-neo    # リポジトリ名
+REPO:               crew               # リポジトリ名
 
 # ドキュメントパス
 ISSUE_RECORDS_DIR:  docs/records/issue-records

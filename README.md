@@ -20,18 +20,53 @@ Crewは、チーム全員がAIコーディングエージェントを活用で�
 
 ## インストール
 
-### 必要なもの
+### npxで即座に起動（推奨）
+
+```bash
+# Crewを起動
+npx crewio
+```
+
+これだけでOK！自動的にブラウザで開きます。
+
+### MCPサーバーとして使用
+
+Claude CodeからMCPでタスク管理する場合：
+
+```bash
+npx crewio --mcp
+```
+
+Claude Codeの設定（`~/.claude.json`）：
+
+```json
+{
+  "mcpServers": {
+    "crew": {
+      "command": "npx",
+      "args": ["-y", "crewio@latest", "--mcp"]
+    }
+  }
+}
+```
+
+### ソースからビルド（開発者向け）
+
+<details>
+<summary>開発環境のセットアップ</summary>
+
+#### 必要なもの
 
 - [Rust](https://rustup.rs/)（最新の安定版）
 - [Node.js](https://nodejs.org/)（>=18）
 - [pnpm](https://pnpm.io/)（>=8）
 
-### セットアップ
+#### セットアップ
 
 ```bash
 # リポジトリをクローン
-git clone https://github.com/Riku4230/crew.git
-cd crew
+git clone https://github.com/pineal-inc/exp-agent-management.git
+cd exp-agent-management
 
 # 依存関係をインストール
 pnpm i
@@ -39,6 +74,8 @@ pnpm i
 # 開発サーバーを起動
 pnpm run dev
 ```
+
+</details>
 
 Crewは自動的にブラウザで `http://localhost:4000` を開きます。
 
