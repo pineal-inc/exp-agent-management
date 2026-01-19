@@ -2,6 +2,10 @@
   <h1 align="center">Crew</h1>
   <p align="center"><strong>みんなのためのAI駆動タスク管理</strong></p>
   <p align="center">エンジニア、PM、ビジネスチーム - AIエージェントと共に働く</p>
+  <p align="center">
+    <a href="https://www.npmjs.com/package/crewio"><img src="https://img.shields.io/npm/v/crewio.svg" alt="npm version"></a>
+    <a href="https://github.com/pineal-inc/exp-agent-management/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"></a>
+  </p>
 </p>
 
 <p align="center">
@@ -216,4 +220,3 @@ pnpm run generate-types
 詳細なライセンス情報と遵守ガイドについては、[LICENSING.md](./docs/LICENSING.md) を参照してください。
 
 **ライセンス**: Apache-2.0（[LICENSE](./LICENSE) を参照）
-# exp-agent-management
