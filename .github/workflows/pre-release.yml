@@ -66,8 +66,13 @@ jobs:
       - name: Determine and update versions
         id: version
         run: |
-          latest_npm_version=$(npm view crew version 2>/dev/null || echo "0.0.0")
+          # Use 'crewio' as the npm package name
+          latest_npm_version=$(npm view crewio version 2>/dev/null || echo "0.0.0")
           echo "Latest npm version: $latest_npm_version"
+
+          # Get local version from package.json
+          local_version=$(node -p "require('./package.json').version")
+          echo "Local version: $local_version"
 
           timestamp=$(date +%Y%m%d%H%M%S)
 
@@ -76,7 +81,14 @@ jobs:
             new_version=$(node -p "require('./package.json').version")
             new_tag="v${new_version}.${timestamp}"
           else
-            npm version $latest_npm_version --no-git-tag-version --allow-same-version
+            # If npm package doesn't exist (0.0.0), use local version as base
+            if [[ "$latest_npm_version" == "0.0.0" ]]; then
+              echo "First publish: using local version $local_version as base"
+              base_version="$local_version"
+            else
+              base_version="$latest_npm_version"
+            fi
+            npm version $base_version --no-git-tag-version --allow-same-version
             npm version ${{ github.event.inputs.version_type }} --no-git-tag-version
             new_version=$(node -p "require('./package.json').version")
             new_tag="v${new_version}-${timestamp}"
