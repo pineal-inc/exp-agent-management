@@ -175,3 +175,4 @@ pnpm run generate-types
 詳細なライセンス情報と遵守ガイドについては、[LICENSING.md](./docs/LICENSING.md) を参照してください。
 
 **ライセンス**: Apache-2.0（[LICENSE](./LICENSE) を参照）
+# exp-agent-management
