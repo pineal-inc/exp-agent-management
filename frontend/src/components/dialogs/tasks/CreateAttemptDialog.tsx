@@ -28,7 +28,6 @@ import { defineModal } from '@/lib/modals';
 import type { ExecutorProfileId, BaseCodingAgent } from 'shared/types';
 import { useKeySubmitTask, Scope } from '@/keyboard';
 import { sessionsApi } from '@/lib/api';
-import { useQuery } from '@tanstack/react-query';
 
 export interface CreateAttemptDialogProps {
   taskId: string;
