@@ -276,3 +276,10 @@ jobs:
           files: |
             binaries/*.zip
             npx-cli/crewio-*.tgz
+
+      - name: Publish to npm
+        run: |
+          cd npx-cli
+          npm publish crewio-*.tgz --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
