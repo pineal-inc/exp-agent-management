@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Project } from 'shared/types';
 import { useUserSystem } from '@/components/ConfigProvider';
-import { useTaskMutations } from '@/hooks/useTaskMutations';
+import { useTaskMutationsWithUndo } from '@/hooks/useTaskMutationsWithUndo';
 import { useProjectRepos } from '@/hooks';
 import {
   COMPANION_INSTALL_TASK_TITLE,
@@ -42,7 +42,7 @@ export function NoServerContent({
   const navigate = useNavigate();
   const { config } = useUserSystem();
 
-  const { createAndStart } = useTaskMutations(project?.id);
+  const { createAndStart } = useTaskMutationsWithUndo(project?.id);
   const { data: projectRepos = [] } = useProjectRepos(project?.id);
 
   const handleConfigureDevScript = () => {

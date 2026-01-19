@@ -7,7 +7,7 @@ import { useSingleTaskProperties } from '@/hooks/useTaskProperties';
 import { useNavigateWithSearch } from '@/hooks';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { useTaskDependencies } from '@/hooks/useTaskDependencies';
-import { useTaskMutations } from '@/hooks/useTaskMutations';
+import { useTaskMutationsWithUndo } from '@/hooks/useTaskMutationsWithUndo';
 import { paths } from '@/lib/paths';
 import type { TaskWithAttemptStatus } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
@@ -42,7 +42,7 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
 
   // Get dependencies for checking if task has any
   const { dependencies } = useTaskDependencies(projectId);
-  const { updateTask } = useTaskMutations(projectId);
+  const { updateTask } = useTaskMutationsWithUndo(projectId);
 
   // Check if the current task has dependencies
   const taskHasDependencies = useMemo(() => {

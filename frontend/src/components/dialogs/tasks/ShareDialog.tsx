@@ -20,7 +20,7 @@ import type { TaskWithAttemptStatus } from 'shared/types';
 import { LoginRequiredPrompt } from '@/components/dialogs/shared/LoginRequiredPrompt';
 import { useAuth } from '@/hooks';
 import { useProject } from '@/contexts/ProjectContext';
-import { useTaskMutations } from '@/hooks/useTaskMutations';
+import { useTaskMutationsWithUndo } from '@/hooks/useTaskMutationsWithUndo';
 
 export interface ShareDialogProps {
   task: TaskWithAttemptStatus;
@@ -32,7 +32,7 @@ const ShareDialogImpl = NiceModal.create<ShareDialogProps>(({ task }) => {
   const { loading: systemLoading } = useUserSystem();
   const { isSignedIn } = useAuth();
   const { project } = useProject();
-  const { shareTask } = useTaskMutations(task.project_id);
+  const { shareTask } = useTaskMutationsWithUndo(task.project_id);
   const { reset: resetShareTask } = shareTask;
 
   const [shareError, setShareError] = useState<string | null>(null);

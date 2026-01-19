@@ -1,60 +1,69 @@
-# DAGビューでの依存関係なしタスク表示の改善
+# Undo/Redo（Cmd+Z）が効かない問題の修正
 
-## 概要
-タスクを追加した時に、依存関係がなくてもDAGエリアにノードとして表示できるようにする。
+## 問題
+タスク操作後にCmd+Z（Undo）を押しても動作しない。
 
-## 現状
-- **依存関係あり** → DAGビューに表示
-- **依存関係なし & 未完了** → サイドバー（タスクプール）に表示
-- **依存関係なし & 完了** → アーカイブに表示
+## 原因
+ほとんどのコンポーネントがUndo非対応の`useTaskMutations`を使用しているため、Undoスタックに操作が記録されていない。
 
-## 要望
-- タスク作成直後でも、DAGエリアにノードとして表示したい
-- サイドバーからドラッグ＆ドロップでDAGに配置したい
+### 現状の使用状況
+
+| コンポーネント | 使用フック | Undo対応 |
+|---------------|-----------|---------|
+| TaskFormDialog | useTaskMutationsWithUndo | ✅ |
+| DeleteTaskConfirmationDialog | useTaskMutationsWithUndo | ✅ |
+| **TaskPanel** | useTaskMutations | ❌ |
+| **TaskDagView** | useTaskMutations | ❌ |
+| **NoServerContent** | useTaskMutations | ❌ |
+| **ShareDialog** | useTaskMutations | ❌ |
+| **StopShareTaskDialog** | useTaskMutations | ❌ |
 
 ## 実装方針
 
-### 変更箇所
-**ファイル**: `frontend/src/components/tasks/TaskDagView.tsx`
+### 変更対象ファイル
 
-現在のタスク分類ロジック（207-235行目）を以下のように変更：
+1. **`frontend/src/components/TaskPanel.tsx`**
+   - `useTaskMutations` → `useTaskMutationsWithUndo` に変更
+   - ステータス変更（updateTask）がUndo対象になる
+
+2. **`frontend/src/components/tasks/TaskDagView.tsx`**
+   - `useTaskMutations` → `useTaskMutationsWithUndo` に変更
+   - DAG位置更新（updateTask）がUndo対象になる
+
+3. **`frontend/src/pages/NoServerContent.tsx`**
+   - `useTaskMutations` → `useTaskMutationsWithUndo` に変更
+   - タスク作成がUndo対象になる
+
+4. **`frontend/src/components/ShareDialog.tsx`**
+   - `useTaskMutations` → `useTaskMutationsWithUndo` に変更
+
+5. **`frontend/src/components/StopShareTaskDialog.tsx`**
+   - `useTaskMutations` → `useTaskMutationsWithUndo` に変更
+
+### 変更内容（各ファイル共通）
 
 ```typescript
-// 現在のロジック
-const hasDependency = tasksWithDependencies.has(task.id);
-if (hasDependency) {
-  inDag.push(task);  // 依存関係あり → DAG
-} else if (task.status === 'done') {
-  inArchive.push(task);  // 依存関係なし & 完了 → アーカイブ
-} else {
-  inPool.push(task);  // 依存関係なし & 未完了 → プール
-}
+// Before
+import { useTaskMutations } from '@/hooks/useTaskMutations';
+const { updateTask, deleteTask, ... } = useTaskMutations(projectId);
 
-// 新しいロジック
-const hasDependency = tasksWithDependencies.has(task.id);
-const hasPosition = task.dag_position_x !== null && task.dag_position_y !== null;
-
-if (hasDependency || hasPosition) {
-  inDag.push(task);  // 依存関係あり OR 位置情報あり → DAG
-} else if (task.status === 'done') {
-  inArchive.push(task);  // 依存関係なし & 位置なし & 完了 → アーカイブ
-} else {
-  inPool.push(task);  // 依存関係なし & 位置なし & 未完了 → プール
-}
+// After
+import { useTaskMutationsWithUndo } from '@/hooks/useTaskMutationsWithUndo';
+const { updateTask, deleteTask, ... } = useTaskMutationsWithUndo(projectId);
 ```
 
-### 動作フロー
-1. タスク作成時 → サイドバー（タスクプール）に表示
-2. サイドバーからDAGエリアにドラッグ＆ドロップ → `dag_position_x/y` が設定される
-3. DAGエリアに表示される（依存関係がなくても）
-4. DAGノードをサイドバーにドラッグ → `dag_position_x/y` がクリアされ、プールに戻る
-
 ## 検証方法
-1. `pnpm run dev` でアプリ起動（バックエンドも起動）
-2. プロジェクトを作成
-3. タスクを作成 → サイドバーに表示される
-4. サイドバーからDAGエリアにドラッグ＆ドロップ → DAGに表示される
-5. DAGノードをサイドバーにドラッグ → プールに戻る
 
-## 変更ファイル
-- `frontend/src/components/tasks/TaskDagView.tsx` - タスク分類ロジック変更（約10行）
+1. `pnpm run dev` でアプリ起動
+2. プロジェクトを開く
+3. **TaskPanel**でタスクのステータスを変更
+4. Cmd+Z（Mac）/ Ctrl+Z（Windows）を押す
+5. ステータスが元に戻ることを確認
+6. Cmd+Shift+Z / Ctrl+Shift+Z でRedoが動作することを確認
+
+## 変更ファイル一覧
+- `frontend/src/components/TaskPanel.tsx`
+- `frontend/src/components/tasks/TaskDagView.tsx`
+- `frontend/src/pages/NoServerContent.tsx`
+- `frontend/src/components/ShareDialog.tsx`
+- `frontend/src/components/StopShareTaskDialog.tsx`

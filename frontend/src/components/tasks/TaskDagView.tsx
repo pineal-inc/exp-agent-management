@@ -30,7 +30,7 @@ import {
 } from '@/hooks/useTaskDependencies';
 import { useDependencyGenres } from '@/hooks/useDependencyGenres';
 import { DependencyGenreManager } from './DependencyGenreManager';
-import { useTaskMutations } from '@/hooks/useTaskMutations';
+import { useTaskMutationsWithUndo } from '@/hooks/useTaskMutationsWithUndo';
 import { getLayoutedElements, getSwimlaneLayoutedElements, type SwimlaneLane } from '@/lib/dagLayout';
 // import { useOrchestration } from '@/hooks/useOrchestration'; // Disabled until backend API is ready
 import { Button } from '@/components/ui/button';
@@ -147,7 +147,7 @@ const TaskDAGViewInner = memo(function TaskDAGViewInner({
     isConnected: wsConnected,
   } = useTaskDependencies(projectId);
   const { genres, genresById } = useDependencyGenres(projectId);
-  const { updateTask } = useTaskMutations(projectId);
+  const { updateTask } = useTaskMutationsWithUndo(projectId);
 
   // Track previous dependency count to detect changes
   const prevDepsCountRef = useRef(dependencies.length);
