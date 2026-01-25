@@ -110,6 +110,125 @@ Crewは自動的にブラウザで `http://localhost:4000` を開きます。
 - リアルタイム実行モニタリング
 - タスク完了時のサウンド通知
 
+## チーム共有機能（Team Mode）
+
+Crewはチーム間でタスクを共有するためのTeam Modeをサポートしています。Supabaseをデータ基盤として、リアルタイム同期とオフライン対応を実現しています。
+
+### 機能概要
+
+- **チーム管理** - 招待コードでチームに参加、メンバーの役割管理
+- **Stories** - ユーザーストーリー形式でタスクをまとめて管理
+- **リアルタイム同期** - チームメンバー間でタスク変更を即座に反映
+- **オフライン対応** - オフライン時の変更をキューに保存し、復旧後に同期
+- **CLAUDE.md自動生成** - AIエージェント向けのコンテキストファイルを自動生成
+
+### セットアップ
+
+#### 1. Supabaseプロジェクトの作成
+
+1. [Supabase](https://supabase.com)でプロジェクトを作成
+2. `supabase/migrations/001_initial.sql`のスキーマを実行
+3. Project URLとanon keyを取得
+
+#### 2. 設定ファイルの作成
+
+プロジェクトルートに`.crew/config.json`を作成:
+
+```json
+{
+  "version": 1,
+  "team": {
+    "id": "your-team-uuid",
+    "name": "My Team"
+  },
+  "project": {
+    "id": "your-project-uuid"
+  },
+  "supabase": {
+    "url": "https://xxx.supabase.co",
+    "anon_key": "eyJ..."
+  }
+}
+```
+
+#### 3. 環境変数（オプション）
+
+環境変数でも設定可能:
+
+```bash
+export SUPABASE_URL="https://xxx.supabase.co"
+export SUPABASE_ANON_KEY="eyJ..."
+```
+
+### 使い方
+
+#### チームの作成
+
+```bash
+# API経由でチームを作成
+curl -X POST http://localhost:4000/api/teams \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Team", "description": "開発チーム"}'
+```
+
+レスポンスに含まれる`invite_code`を使ってメンバーを招待できます。
+
+#### チームへの参加
+
+```bash
+# 招待コードでチームに参加
+curl -X POST http://localhost:4000/api/teams/join \
+  -H "Content-Type: application/json" \
+  -d '{"invite_code": "ABC123", "display_name": "田中太郎"}'
+```
+
+#### Storiesの管理
+
+```bash
+# Storyを作成
+curl -X POST http://localhost:4000/api/stories \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "your-project-uuid",
+    "title": "ユーザー認証機能",
+    "as_a": "登録ユーザー",
+    "i_want": "メールとパスワードでログイン",
+    "so_that": "個人データにアクセスできる"
+  }'
+
+# Storyに紐づくタスクを取得
+curl http://localhost:4000/api/stories/{story_id}/tasks
+```
+
+### API一覧
+
+| エンドポイント | メソッド | 説明 |
+|---------------|---------|------|
+| `/api/teams` | POST | チーム作成 |
+| `/api/teams/join` | POST | 招待コードでチーム参加 |
+| `/api/teams/{id}` | GET | チーム詳細取得 |
+| `/api/teams/{id}/members` | GET | チームメンバー一覧 |
+| `/api/stories` | GET/POST | Stories一覧/作成 |
+| `/api/stories/{id}` | GET/PUT/DELETE | Story詳細/更新/削除 |
+| `/api/stories/{id}/tasks` | GET | Storyに紐づくタスク |
+
+### モード切り替え
+
+- **Solo Mode**: `.crew/config.json`がない場合、ローカルSQLiteのみを使用
+- **Team Mode**: `.crew/config.json`がある場合、Supabaseと同期
+
+Team Modeでも、ローカルにデータをキャッシュするため、オフラインでも作業可能です。
+
+### リアルタイム同期
+
+Team Modeでは、Supabase RealtimeのWebSocket接続を使って変更をリアルタイムで受信します:
+
+- タスクの作成・更新・削除
+- Storyの変更
+- チームメンバーの参加・離脱
+
+競合が発生した場合は「Last-Writer-Wins」戦略で解決されます（`updated_at`タイムスタンプで判定）。
+
 ## 使い方ガイド: CLI vs ダッシュボード
 
 CrewはClaude Code CLIとダッシュボードの2つの方法でAIエージェントを操作できます。それぞれの特徴を活かした使い分けを推奨します。
