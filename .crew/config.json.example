@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "team": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "name": "Your Team Name"
+  },
+  "project": {
+    "id": "00000000-0000-0000-0000-000000000000"
+  },
+  "supabase": {
+    "url": "https://your-project.supabase.co",
+    "anon_key": "your-anon-key-here"
+  }
+}
