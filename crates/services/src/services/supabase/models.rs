@@ -230,3 +230,34 @@ pub struct UpdateTaskRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch_name: Option<String>,
 }
+
+/// Update story request
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UpdateStoryRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub as_a: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub i_want: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub so_that: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acceptance_criteria: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<StoryStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub story_points: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i32>,
+}
+
+/// Join team request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JoinTeamRequest {
+    pub invite_code: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+}

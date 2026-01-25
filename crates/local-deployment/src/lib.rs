@@ -21,6 +21,7 @@ use services::services::{
     remote_client::{RemoteClient, RemoteClientError},
     repo::RepoService,
     share::{ShareConfig, SharePublisher},
+    supabase::SupabaseClient,
 };
 use tokio::sync::RwLock;
 use utils::{
@@ -56,6 +57,7 @@ pub struct LocalDeployment {
     remote_client: Result<RemoteClient, RemoteClientNotConfigured>,
     auth_context: AuthContext,
     oauth_handoffs: Arc<RwLock<HashMap<Uuid, PendingHandoff>>>,
+    supabase_client: Option<SupabaseClient>,
 }
 
 #[derive(Debug, Clone)]
@@ -166,6 +168,29 @@ impl Deployment for LocalDeployment {
 
         let oauth_handoffs = Arc::new(RwLock::new(HashMap::new()));
 
+        // Initialize Supabase client if configured
+        let supabase_client = match (
+            std::env::var("SUPABASE_URL").ok(),
+            std::env::var("SUPABASE_ANON_KEY").ok(),
+        ) {
+            (Some(url), Some(anon_key)) => {
+                match SupabaseClient::new(&url, &anon_key) {
+                    Ok(client) => {
+                        tracing::info!("Supabase client initialized");
+                        Some(client)
+                    }
+                    Err(e) => {
+                        tracing::warn!(?e, "Failed to create Supabase client");
+                        None
+                    }
+                }
+            }
+            _ => {
+                tracing::debug!("Supabase not configured (SUPABASE_URL or SUPABASE_ANON_KEY not set)");
+                None
+            }
+        };
+
         // We need to make analytics accessible to the ContainerService
         // TODO: Handle this more gracefully
         let analytics_ctx = analytics.as_ref().map(|s| AnalyticsContext {
@@ -209,6 +234,7 @@ impl Deployment for LocalDeployment {
             remote_client,
             auth_context,
             oauth_handoffs,
+            supabase_client,
         };
 
         Ok(deployment)
@@ -339,5 +365,32 @@ impl LocalDeployment {
 
     pub fn share_config(&self) -> Option<&ShareConfig> {
         self.share_config.as_ref()
+    }
+
+    pub fn supabase_client(&self) -> Option<SupabaseClient> {
+        self.supabase_client.clone()
+    }
+
+    /// Get user identifier for team operations
+    /// Uses email from cached profile, or falls back to user_id
+    pub async fn get_user_identifier(&self) -> Option<String> {
+        // Try to get email from cached profile first
+        if let Some(profile) = self.auth_context.cached_profile().await {
+            // email is always present in ProfileResponse
+            if !profile.email.is_empty() {
+                return Some(profile.email);
+            }
+            // Fall back to username if email is empty
+            if let Some(username) = profile.username {
+                return Some(username);
+            }
+        }
+
+        // Check credentials exist before returning user_id
+        if self.auth_context.get_credentials().await.is_some() {
+            Some(self.user_id.clone())
+        } else {
+            None
+        }
     }
 }

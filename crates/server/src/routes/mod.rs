@@ -24,10 +24,12 @@ pub mod repo;
 pub mod scratch;
 pub mod sessions;
 pub mod shared_tasks;
+pub mod stories;
 pub mod tags;
 pub mod task_attempts;
 pub mod task_dependencies;
 pub mod tasks;
+pub mod teams;
 
 pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
     // Create routers with different middleware layers
@@ -45,6 +47,8 @@ pub fn router(deployment: DeploymentImpl) -> IntoMakeService<Router> {
         .merge(tags::router(&deployment))
         .merge(oauth::router())
         .merge(organizations::router())
+        .merge(teams::router())
+        .merge(stories::router())
         .merge(filesystem::router())
         .merge(repo::router())
         .merge(events::router(&deployment))

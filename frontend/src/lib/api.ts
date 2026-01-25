@@ -1793,3 +1793,196 @@ export const orchestrationApi = {
     return handleApiResponse<void>(response);
   },
 };
+
+// ============ Team Types ============
+
+export interface Team {
+  id: string;
+  name: string;
+  description?: string;
+  invite_code: string;
+  settings: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamMember {
+  id: string;
+  team_id: string;
+  user_identifier: string;
+  display_name?: string;
+  role: 'admin' | 'member';
+  joined_at: string;
+}
+
+export interface CreateTeamRequest {
+  name: string;
+  description?: string;
+}
+
+export interface JoinTeamRequest {
+  invite_code: string;
+  display_name?: string;
+}
+
+export interface CreateTeamResponse {
+  team: Team;
+  member: TeamMember;
+}
+
+export interface JoinTeamResponse {
+  team: Team;
+  member: TeamMember;
+}
+
+export interface TeamMemberInfo {
+  id: string;
+  user_identifier: string;
+  display_name?: string;
+  role: 'admin' | 'member';
+  joined_at: string;
+}
+
+// Teams API
+export const teamsApi = {
+  /** Create a new team */
+  create: async (data: CreateTeamRequest): Promise<CreateTeamResponse> => {
+    const response = await makeRequest('/api/teams', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<CreateTeamResponse>(response);
+  },
+
+  /** Join a team using invite code */
+  join: async (data: JoinTeamRequest): Promise<JoinTeamResponse> => {
+    const response = await makeRequest('/api/teams/join', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<JoinTeamResponse>(response);
+  },
+
+  /** Get team details */
+  get: async (teamId: string): Promise<Team> => {
+    const response = await makeRequest(`/api/teams/${teamId}`);
+    return handleApiResponse<Team>(response);
+  },
+
+  /** Get team members */
+  getMembers: async (teamId: string): Promise<TeamMemberInfo[]> => {
+    const response = await makeRequest(`/api/teams/${teamId}/members`);
+    return handleApiResponse<TeamMemberInfo[]>(response);
+  },
+};
+
+// ============ Story Types ============
+
+export type StoryStatus = 'backlog' | 'ready' | 'in_progress' | 'done' | 'cancelled';
+
+export interface Story {
+  id: string;
+  project_id: string;
+  title: string;
+  description?: string;
+  as_a?: string;
+  i_want?: string;
+  so_that?: string;
+  acceptance_criteria: Record<string, unknown>;
+  status: StoryStatus;
+  story_points?: number;
+  priority: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateStoryRequest {
+  project_id: string;
+  title: string;
+  description?: string;
+  as_a?: string;
+  i_want?: string;
+  so_that?: string;
+  acceptance_criteria?: Record<string, unknown>;
+  story_points?: number;
+  priority?: number;
+  created_by: string;
+}
+
+export interface UpdateStoryRequest {
+  title?: string;
+  description?: string;
+  as_a?: string;
+  i_want?: string;
+  so_that?: string;
+  acceptance_criteria?: Record<string, unknown>;
+  status?: StoryStatus;
+  story_points?: number;
+  priority?: number;
+}
+
+export interface RemoteTask {
+  id: string;
+  project_id: string;
+  story_id?: string;
+  title: string;
+  description?: string;
+  type: 'feature' | 'bug' | 'enhancement' | 'spike' | 'chore';
+  status: 'todo' | 'in_progress' | 'in_review' | 'done' | 'blocked';
+  assigned_to?: string;
+  branch_name?: string;
+  metadata: Record<string, unknown>;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Stories API
+export const storiesApi = {
+  /** List all stories for a project */
+  list: async (projectId: string): Promise<Story[]> => {
+    const response = await makeRequest(
+      `/api/stories?project_id=${encodeURIComponent(projectId)}`
+    );
+    return handleApiResponse<Story[]>(response);
+  },
+
+  /** Create a new story */
+  create: async (data: CreateStoryRequest): Promise<Story> => {
+    const response = await makeRequest('/api/stories', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<Story>(response);
+  },
+
+  /** Get a story by ID */
+  get: async (storyId: string): Promise<Story> => {
+    const response = await makeRequest(`/api/stories/${storyId}`);
+    return handleApiResponse<Story>(response);
+  },
+
+  /** Update a story */
+  update: async (storyId: string, data: UpdateStoryRequest): Promise<Story> => {
+    const response = await makeRequest(`/api/stories/${storyId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return handleApiResponse<Story>(response);
+  },
+
+  /** Delete a story */
+  delete: async (storyId: string): Promise<void> => {
+    const response = await makeRequest(`/api/stories/${storyId}`, {
+      method: 'DELETE',
+    });
+    return handleApiResponse<void>(response);
+  },
+
+  /** Get tasks associated with a story */
+  getTasks: async (storyId: string): Promise<RemoteTask[]> => {
+    const response = await makeRequest(`/api/stories/${storyId}/tasks`);
+    return handleApiResponse<RemoteTask[]>(response);
+  },
+};

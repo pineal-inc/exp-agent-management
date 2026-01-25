@@ -237,6 +237,122 @@ impl SupabaseClient {
         self.insert("team_members", &data, jwt).await
     }
 
+    /// Join a team using an invite code
+    pub async fn join_team_by_invite_code(
+        &self,
+        invite_code: &str,
+        user_identifier: &str,
+        display_name: Option<&str>,
+        jwt: Option<&str>,
+    ) -> Result<(Team, TeamMember)> {
+        // Find the team by invite code
+        let team = self
+            .get_team_by_invite_code(invite_code, jwt)
+            .await?
+            .context("Invalid invite code")?;
+
+        // Check if user is already a member
+        let existing_members = self.get_team_members(team.id, jwt).await?;
+        if existing_members
+            .iter()
+            .any(|m| m.user_identifier == user_identifier)
+        {
+            anyhow::bail!("User is already a member of this team");
+        }
+
+        // Add the user as a member
+        let member = self
+            .add_team_member(team.id, user_identifier, display_name, TeamRole::Member, jwt)
+            .await?;
+
+        Ok((team, member))
+    }
+
+    /// Update team details
+    pub async fn update_team(
+        &self,
+        id: Uuid,
+        name: Option<&str>,
+        description: Option<&str>,
+        jwt: Option<&str>,
+    ) -> Result<Team> {
+        let mut data = serde_json::Map::new();
+        if let Some(n) = name {
+            data.insert("name".to_string(), serde_json::Value::String(n.to_string()));
+        }
+        if let Some(d) = description {
+            data.insert("description".to_string(), serde_json::Value::String(d.to_string()));
+        }
+        self.update("teams", id, &serde_json::Value::Object(data), jwt)
+            .await
+    }
+
+    /// Remove a team member
+    pub async fn remove_team_member(
+        &self,
+        team_id: Uuid,
+        user_identifier: &str,
+        jwt: Option<&str>,
+    ) -> Result<()> {
+        let url = self.rest_url("team_members");
+        let response = self
+            .http
+            .delete(&url)
+            .query(&[
+                ("team_id", format!("eq.{}", team_id)),
+                ("user_identifier", format!("eq.{}", user_identifier)),
+            ])
+            .headers(self.auth_headers(jwt))
+            .send()
+            .await
+            .context("Failed to send request")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("Supabase delete failed: {} - {}", status, body);
+        }
+
+        Ok(())
+    }
+
+    /// Update team member role
+    pub async fn update_team_member_role(
+        &self,
+        team_id: Uuid,
+        user_identifier: &str,
+        role: TeamRole,
+        jwt: Option<&str>,
+    ) -> Result<TeamMember> {
+        let url = self.rest_url("team_members");
+        let response = self
+            .http
+            .patch(&url)
+            .query(&[
+                ("team_id", format!("eq.{}", team_id)),
+                ("user_identifier", format!("eq.{}", user_identifier)),
+            ])
+            .headers(self.auth_headers(jwt))
+            .header("Prefer", "return=representation")
+            .json(&serde_json::json!({ "role": role }))
+            .send()
+            .await
+            .context("Failed to send request")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("Supabase update failed: {} - {}", status, body);
+        }
+
+        let items: Vec<TeamMember> = response
+            .json()
+            .await
+            .context("Failed to parse response")?;
+
+        items.into_iter().next().context("No member found")
+    }
+
     // ============ Projects ============
 
     /// Get projects for a team
@@ -289,6 +405,30 @@ impl SupabaseClient {
         jwt: Option<&str>,
     ) -> Result<Story> {
         self.insert("stories", &request, jwt).await
+    }
+
+    /// Update a story
+    pub async fn update_story(
+        &self,
+        id: Uuid,
+        request: UpdateStoryRequest,
+        jwt: Option<&str>,
+    ) -> Result<Story> {
+        self.update("stories", id, &request, jwt).await
+    }
+
+    /// Delete a story
+    pub async fn delete_story(&self, id: Uuid, jwt: Option<&str>) -> Result<()> {
+        self.delete("stories", id, jwt).await
+    }
+
+    /// Get tasks for a story
+    pub async fn get_story_tasks(
+        &self,
+        story_id: Uuid,
+        jwt: Option<&str>,
+    ) -> Result<Vec<RemoteTask>> {
+        self.get_tasks_for_story(story_id, jwt).await
     }
 
     // ============ Tasks ============
